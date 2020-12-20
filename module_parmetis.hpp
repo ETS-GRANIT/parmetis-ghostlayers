@@ -33,8 +33,11 @@ struct submesh{
   idx_t nelems, nnodes, nboundaryelems;
   idx_t esize;
 
+  std::vector<std::vector<real_t> > extents;
+  std::set<idx_t> potentialneighbors;
+
   std::vector<std::vector<idx_t> > elems;
-  std::vector<std::vector<idx_t> > neighbours;
+  std::vector<std::vector<idx_t> > neighbors;
   std::vector<std::vector<idx_t> > boundaryelems;
   std::vector<std::vector<real_t> > nodes;
 
@@ -57,11 +60,12 @@ struct submesh{
   /* void buildElemConnectivity2D(); */
   /* void buildElemConnectivity3D(); */
   bool isBoundary(idx_t ielem);
+  void computemyextents(idx_t nsubmeshes);
 };
 
 bool submesh::isBoundary(idx_t ielem){
   for(idx_t i=0; i<esize; i++){
-    if(neighbours[ielem][i] == -1) return(1);
+    if(neighbors[ielem][i] == -1) return(1);
   }
   return(0);
 }
@@ -245,6 +249,13 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
           }
         }
       }
+  }
+
+
+  //Free of submesheselems
+  std::map<idx_t, idx_t*>::iterator it;
+  for(it=submesheselems.begin();it!=submesheselems.end();it++){
+    delete [] it->second;
   }
 
   delete [] tmpElems;
@@ -474,7 +485,7 @@ void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
   if(dimension==2){
     for(idx_t k=0;k<submeshesowned.size();k++){
       std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
-      submeshesowned[k].neighbours.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
+      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
       submeshesowned[k].buildEdges(edges);
       submeshesowned[k].buildElemConnectivity2D(edges);
       /* submeshesowned[k].buildEdges(); */
@@ -484,7 +495,7 @@ void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
   if(dimension==3){
     for(idx_t k=0;k<submeshesowned.size();k++){
       std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
-      submeshesowned[k].neighbours.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
+      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
 
       auto t1 = std::chrono::high_resolution_clock::now();
       submeshesowned[k].buildFaces(faces);
@@ -497,7 +508,7 @@ void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
       auto t4 = std::chrono::high_resolution_clock::now();
       auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
       auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
-      std::cout << duration1/100000 << " " << duration2/100000 << "\n";
+      /* std::cout << duration1/100000 << " " << duration2/100000 << "\n"; */
     }
   }
 }
@@ -563,11 +574,11 @@ void submesh::buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>,
         sp = (s+1)%esize;
         if(((elems[elem1][s] == s1) and (elems[elem1][sp] == s2)) or 
             ((elems[elem1][s] == s2) and (elems[elem1][sp] == s1))){
-          neighbours[elem1][s] = elem2;
+          neighbors[elem1][s] = elem2;
         }
         if(((elems[elem2][s] == s1) and (elems[elem2][sp] == s2)) or 
             ((elems[elem2][s] == s2) and (elems[elem2][sp] == s1))){
-          neighbours[elem2][s] = elem2;
+          neighbors[elem2][s] = elem2;
         }
       }
     }
@@ -600,7 +611,7 @@ void submesh::buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std
         for(idx_t k=0;k<faceSize;k++){
           cond1 = ((std::find(faceVert.begin(), faceVert.end(), it->first[k])!=faceVert.end()) and cond1);
         }
-        if(cond1) neighbours[elem1][s] = elem2;
+        if(cond1) neighbors[elem1][s] = elem2;
 
         faceVert[0] = elems[elem2][s];
         for(idx_t k=1; k<faceSize; k++){
@@ -611,7 +622,7 @@ void submesh::buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std
         for(idx_t k=0;k<faceSize;k++){
           cond1 = ((std::find(faceVert.begin(), faceVert.end(), it->first[k])!=faceVert.end()) and cond1);
         }
-        if(cond1) neighbours[elem2][s] = elem1;
+        if(cond1) neighbors[elem2][s] = elem1;
       }
     }
     it++;
@@ -642,5 +653,89 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned){
       }
     }  
 
+  }
+}
+
+void submesh::computemyextents(idx_t nsubmeshes){
+  extents.resize(3,std::vector<real_t>(2, 0.));
+
+  extents[0][0] = nodes[0][0];
+  extents[0][1] = nodes[0][0];
+
+  extents[1][0] = nodes[0][1];
+  extents[1][1] = nodes[0][1];
+
+  extents[2][0] = nodes[0][2];
+  extents[2][1] = nodes[0][2];
+
+  for(int i=1;i<nnodes;i++){
+    if(nodes[i][0] < extents[0][0]) extents[0][0] = nodes[i][0];
+    if(nodes[i][0] > extents[0][1]) extents[0][1] = nodes[i][0];
+
+    if(nodes[i][1] < extents[1][0]) extents[1][0] = nodes[i][1];
+    if(nodes[i][1] > extents[1][1]) extents[1][1] = nodes[i][1];
+
+    if(nodes[i][2] < extents[2][0]) extents[2][0] = nodes[i][2];
+    if(nodes[i][2] > extents[2][1]) extents[2][1] = nodes[i][2];
+  }
+}
+
+void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshesowned, MPI_Comm comm){
+  idx_t nprocs, me;
+  MPI_Status stat;
+  MPI_Status *statSend, *statRecv;
+
+  MPI_Comm_size(comm,&nprocs);
+  MPI_Comm_rank(comm,&me);
+
+  /* std::vector<std::vector<std::vector<real_t> > > allextents(nsubmeshes,std::vector<std::vector<real_t> >(3, std::vector<real_t>(2, 0.))); */
+  real_t *allextents = new real_t[nsubmeshes*3*2];
+  for(idx_t k=0;k<nsubmeshes*2*3;k++){
+    allextents[k] = 0.;
+  }
+
+  //Compute each submesh extents
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    submeshesowned[k].computemyextents(nsubmeshes);
+    allextents[submeshesowned[k].submeshid*3*2] = submeshesowned[k].extents[0][0];
+    allextents[submeshesowned[k].submeshid*3*2 + 1] = submeshesowned[k].extents[0][1];
+    allextents[submeshesowned[k].submeshid*3*2 + 2] = submeshesowned[k].extents[1][0];
+    allextents[submeshesowned[k].submeshid*3*2 + 3] = submeshesowned[k].extents[1][1];
+    allextents[submeshesowned[k].submeshid*3*2 + 4] = submeshesowned[k].extents[2][0];
+    allextents[submeshesowned[k].submeshid*3*2 + 5] = submeshesowned[k].extents[2][1];
+  }
+
+  //Share extents with everyone
+  //MPI_Allreduce(MPI_IN_PLACE, &allextents[0][0][0], nsubmeshes*3*2, REAL_T, MPI_SUM, comm);
+  //MPI_Allreduce(MPI_IN_PLACE, allextents.data(), 3*2, REAL_T, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, (void *)allextents, nsubmeshes*3*2, REAL_T, MPI_SUM, comm);
+
+  bool interx, intery, interz;
+  //Compute potential neighbours
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    for(idx_t p=0; p<nsubmeshes; p++){
+      interx = ((allextents[submeshesowned[k].submeshid*6+1]>allextents[p*6]) and
+        (allextents[submeshesowned[k].submeshid*6+1]<allextents[p*6+1]));
+      interx = interx or ((allextents[submeshesowned[k].submeshid*6]>allextents[p*6]) and
+        (allextents[submeshesowned[k].submeshid*6]<allextents[p*6+1]));
+      intery = ((allextents[submeshesowned[k].submeshid*6+3]>allextents[p*6+2]) and
+        (allextents[submeshesowned[k].submeshid*6+3]<allextents[p*6+3]));
+      intery = intery or ((allextents[submeshesowned[k].submeshid*6+2]>allextents[p*6+2]) and
+        (allextents[submeshesowned[k].submeshid*6+2]<allextents[p*6+3]));
+      interz = ((allextents[submeshesowned[k].submeshid*6+5]>allextents[p*6+4]) and
+        (allextents[submeshesowned[k].submeshid*6+5]<allextents[p*6+5]));
+      interz = interx or ((allextents[submeshesowned[k].submeshid*6+4]>allextents[p*6+4]) and
+        (allextents[submeshesowned[k].submeshid*6+4]<allextents[p*6+5]));
+      if((interx and intery) and interz){
+        submeshesowned[k].potentialneighbors.insert(p);
+      }
+    }
+  }
+
+  std::set<idx_t>::iterator it;
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    for(it = submeshesowned[k].potentialneighbors.begin(); it!=submeshesowned[k].potentialneighbors.end(); it++){
+      std::cout << submeshesowned[k].submeshid << " " << *it << std::endl;
+    }
   }
 }

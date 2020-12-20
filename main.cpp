@@ -56,21 +56,22 @@ int main(int argc, char *argv[]) {
   std::vector<submesh> submeshesowned;
   std::vector<idx_t> ownerofsubmesh;
 
+  if(eptr) delete [] eptr;
+
   auto t3 = std::chrono::high_resolution_clock::now();
   Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
   Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
   auto t4 = std::chrono::high_resolution_clock::now();
 
-  //We do not need eind, eptr, part anymore
   if(eind) delete [] eind;
-  if(eptr) delete [] eptr;
   if(part) delete [] part;
 
-  /* updateNodes(submeshesowned, nodesfile, comm); */
+  updateNodes(submeshesowned, nodesfile, comm);
 
   auto t5 = std::chrono::high_resolution_clock::now();
   Buildconnectivity(submeshesowned, dim);
   Findboundaryfromconnectivity(submeshesowned);
+  Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
   auto t6 = std::chrono::high_resolution_clock::now();
 
   /* writeVTK(submeshesowned, esize, dim); */
@@ -79,7 +80,7 @@ int main(int argc, char *argv[]) {
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
   auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
   auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
-  std::cout << me << " "  << duration1/100000 << " " << duration2/100000 << " " << duration3/100000 << "\n";
+  /* std::cout << me << " "  << duration1/100000 << " " << duration2/100000 << " " << duration3/100000 << "\n"; */
 
   MPI_Finalize();
 }
