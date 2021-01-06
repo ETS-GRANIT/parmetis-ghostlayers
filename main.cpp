@@ -70,17 +70,20 @@ int main(int argc, char *argv[]) {
 
   auto t5 = std::chrono::high_resolution_clock::now();
   Buildconnectivity(submeshesowned, dim);
-  Findboundaryfromconnectivity(submeshesowned);
+  idx_t method=0;// 0 edgewise, 1 pointwise
+  idx_t numlayers=3;
+  Findboundaryfromconnectivity(submeshesowned, method, numlayers);
   Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
   auto t6 = std::chrono::high_resolution_clock::now();
 
-  /* writeVTK(submeshesowned, esize, dim); */
-  /* writeboundaryVTK(submeshesowned, esize, dim); */
+  writeVTK(submeshesowned, esize, dim);
+  writeboundaryVTK(submeshesowned, esize, dim);
+  writeneighbors(submeshesowned, esize);
 
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
   auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
   auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
-  /* std::cout << me << " "  << duration1/100000 << " " << duration2/100000 << " " << duration3/100000 << "\n"; */
+  std::cout << me << " "  << duration1/100000 << " " << duration2/100000 << " " << duration3/100000 << "\n";
 
   MPI_Finalize();
 }

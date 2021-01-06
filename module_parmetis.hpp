@@ -38,7 +38,8 @@ struct submesh{
 
   std::vector<std::vector<idx_t> > elems;
   std::vector<std::vector<idx_t> > neighbors;
-  std::vector<std::vector<idx_t> > boundaryelems;
+  std::set<idx_t> boundaryelems;
+  std::set<idx_t> boundarypoints;
   std::vector<std::vector<real_t> > nodes;
 
   //Numbering maps for nodes and elements
@@ -47,18 +48,12 @@ struct submesh{
   std::map<idx_t,idx_t> nodes_gtl;
   std::map<idx_t,idx_t> nodes_ltg;
   std::unordered_set<idx_t> nodesindex; 
-  /* std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges; */
-  /* std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces; */
 
   void Addelems(idx_t *elems, idx_t offset, idx_t nelems, idx_t esize);
   void buildEdges(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
   void buildFaces(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
   void buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
   void buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
-  /* void buildEdges(); */
-  /* void buildFaces(); */
-  /* void buildElemConnectivity2D(); */
-  /* void buildElemConnectivity3D(); */
   bool isBoundary(idx_t ielem);
   void computemyextents(idx_t nsubmeshes);
 };
@@ -355,6 +350,28 @@ void ParallelReadMesh(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part,
   meshFile.close();
 }
 
+void writeneighbors(std::vector<submesh> &submeshesowned, idx_t esize){
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    std::stringstream prefixedOutputFilename;
+    prefixedOutputFilename << submeshesowned[k].submeshid << "_output_neighbors.dat";
+    std::ofstream outFile(prefixedOutputFilename.str());
+    outFile << std::setprecision(16);
+    for(idx_t i=0; i<submeshesowned[k].nelems; i++){
+      outFile << submeshesowned[k].elems_ltg[i] << " ";
+      for(idx_t j=0; j<submeshesowned[k].esize; j++){
+        idx_t value = submeshesowned[k].neighbors[i][j];
+        if(value!=-1){
+          outFile << submeshesowned[k].elems_ltg[submeshesowned[k].neighbors[i][j]] << " ";
+        }
+        else{
+          outFile << "-1 ";
+        }
+      }
+      outFile << std::endl;
+    }
+  }
+}
+
 void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
     idx_t nNodes = submeshesowned[k].nnodes;
@@ -421,10 +438,11 @@ void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t d
 
     outFile << std::endl;
     outFile << "CELLS " << nboundaryelems << " " << nboundaryelems*(esize+1) << std::endl;
-    for(idx_t i=0; i<nboundaryelems; i++){
+    std::set<idx_t>::iterator it;
+    for(it=submeshesowned[k].boundaryelems.begin(); it!=submeshesowned[k].boundaryelems.end(); it++){
       outFile << esize << " ";
       for(idx_t p=0; p<esize; p++){
-        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].boundaryelems[i][p]] << " ";
+        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[*it][p]] << " ";
       }
       outFile << std::endl;
     }
@@ -578,7 +596,7 @@ void submesh::buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>,
         }
         if(((elems[elem2][s] == s1) and (elems[elem2][sp] == s2)) or 
             ((elems[elem2][s] == s2) and (elems[elem2][sp] == s1))){
-          neighbors[elem2][s] = elem2;
+          neighbors[elem2][s] = elem1;
         }
       }
     }
@@ -629,29 +647,67 @@ void submesh::buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std
   }
 }
 
-void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned){
+void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t method, idx_t numlayers){
 
   for(idx_t k=0;k<submeshesowned.size();k++){
-    //Count how many boundary elems there are, then allocate memory and fill
-    idx_t nboundaryelems=0;
     for(idx_t i=0;i<submeshesowned[k].nelems;i++){
       if(submeshesowned[k].isBoundary(i)){
-        nboundaryelems++;
-      }
-    }  
+        submeshesowned[k].boundaryelems.insert(i);
 
-    submeshesowned[k].nboundaryelems = nboundaryelems;
-    submeshesowned[k].boundaryelems.resize(nboundaryelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
-
-    idx_t iloc=0;
-    for(idx_t i=0;i<submeshesowned[k].nelems;i++){
-      if(submeshesowned[k].isBoundary(i)){
-        for(idx_t j=0;j<submeshesowned[k].esize;j++){
-          submeshesowned[k].boundaryelems[iloc][j] = submeshesowned[k].elems[i][j];
+        if(method==1){
+          //Add boundarypoints
+          for(idx_t j=0; j<submeshesowned[k].esize; j++){
+            if(submeshesowned[k].neighbors[i][j] == -1){
+              submeshesowned[k].boundarypoints.insert(submeshesowned[k].elems[i][j]);
+              submeshesowned[k].boundarypoints.insert(submeshesowned[k].elems[i][(j+1)%submeshesowned[k].esize]);
+            }
+          }
         }
-        iloc++;
       }
     }  
+
+    //If method=1 add cells that have only a point in the boundary points
+    if(method==1){
+      for(idx_t i=0;i<submeshesowned[k].nelems;i++){
+        for(idx_t j=0;j<submeshesowned[k].esize;j++){
+          if(submeshesowned[k].boundarypoints.find(submeshesowned[k].elems[i][j])!=submeshesowned[k].boundarypoints.end()){
+            submeshesowned[k].boundaryelems.insert(i);
+          }
+        }
+      }
+    }
+
+    for(idx_t l=1; l<numlayers; l++){
+      std::set<idx_t> tmpnewboundaryelems = submeshesowned[k].boundaryelems;
+      std::set<idx_t>::iterator it;
+      for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
+        for(idx_t j=0;j<submeshesowned[k].esize;j++){
+          if(submeshesowned[k].neighbors[*it][j] != -1){
+            submeshesowned[k].boundaryelems.insert(submeshesowned[k].neighbors[*it][j]);
+
+            if(method==1){
+              //Add boundarypoints
+              for(idx_t j=0; j<submeshesowned[k].esize; j++){
+                submeshesowned[k].boundarypoints.insert(submeshesowned[k].elems[*it][j]);
+              }
+            }
+
+          }
+        } 
+      }
+
+      if(method==1){
+        for(idx_t i=0;i<submeshesowned[k].nelems;i++){
+          for(idx_t j=0;j<submeshesowned[k].esize;j++){
+            if(submeshesowned[k].boundarypoints.find(submeshesowned[k].elems[i][j])!=submeshesowned[k].boundarypoints.end()){
+              submeshesowned[k].boundaryelems.insert(i);
+            }
+          }
+        }
+      }
+    }
+
+    submeshesowned[k].nboundaryelems = submeshesowned[k].boundaryelems.size();
 
   }
 }
@@ -735,7 +791,7 @@ void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshes
   std::set<idx_t>::iterator it;
   for(idx_t k=0; k<submeshesowned.size(); k++){
     for(it = submeshesowned[k].potentialneighbors.begin(); it!=submeshesowned[k].potentialneighbors.end(); it++){
-      std::cout << submeshesowned[k].submeshid << " " << *it << std::endl;
+      /* std::cout << submeshesowned[k].submeshid << " " << *it << std::endl; */
     }
   }
 }
