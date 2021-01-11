@@ -60,6 +60,10 @@ int main(int argc, char *argv[]) {
 
   auto t3 = std::chrono::high_resolution_clock::now();
   Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
+  MPI_Barrier(comm);
+  /* for(idx_t k=0; k<nsubmeshes; k++){ */
+  /*   std::cout << k << " is owned by " << ownerofsubmesh[k] << std::endl; */
+  /* } */
   Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
   auto t4 = std::chrono::high_resolution_clock::now();
 
@@ -74,6 +78,7 @@ int main(int argc, char *argv[]) {
   idx_t numlayers=3;
   Findboundaryfromconnectivity(submeshesowned, method, numlayers);
   Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
+  Shareboundary(submeshesowned, ownerofsubmesh, comm);
   auto t6 = std::chrono::high_resolution_clock::now();
 
   writeVTK(submeshesowned, esize, dim);
