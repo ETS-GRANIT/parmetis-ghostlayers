@@ -614,7 +614,7 @@ void submesh::buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>,
 
 void submesh::buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
   /* void submesh::buildElemConnectivity3D(){ */
-  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>:: iterator it = faces.begin();
+  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>:: iterator it = faces.begin();
 
   idx_t faceSize=3;//Tetrahedron
   std::vector<idx_t> faceVert(faceSize,-1);
@@ -794,6 +794,7 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   requestSendPtr = new MPI_Request[ntotreq];
   requestRecvPtr = new MPI_Request[ntotreq];
   idx_t nnodesrecv[ntotreq];
+  idx_t nnodessend[ntotreq];
 
   //Construc contiguous vector of nodes  to send
   for(idx_t k=0; k<submeshesowned.size(); k++){
@@ -808,6 +809,17 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
     }
   }
 
+  nreq=0;
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    //Isend number of nodes
+    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
+      if(ownerofsubmesh[*it]!=me){
+        nnodessend[nreq] = submeshesowned[k].boundarynodes.size();
+        nreq++;
+      }
+    }
+  }
+
   //Construc contiguous vector of elems to send
 
   nreq=0;
@@ -815,8 +827,8 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
     //Isend number of nodes
     for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
       if(ownerofsubmesh[*it]!=me){
-        idx_t bns = submeshesowned[k].boundarynodes.size();
-        MPI_Isend(&bns, 1, IDX_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
+        /* idx_t bns = submeshesowned[k].boundarynodes.size(); */
+        MPI_Isend(&nnodessend[nreq], 1, IDX_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
         nreq++;
       }
       else{
@@ -862,7 +874,7 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
     for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
       if(ownerofsubmesh[*it]!=me){
         MPI_Isend(&nodestosend[4*maxnodestosend*k], submeshesowned[k].boundarynodes.size()*4, REAL_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
-        std::cout << me << " send to   " << ownerofsubmesh[*it] << " " << submeshesowned[k].boundarynodes.size() << " wt " << (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid <<  std::endl;
+        /* std::cout << me << " send to   " << ownerofsubmesh[*it] << " " << submeshesowned[k].boundarynodes.size() << " wt " << (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid <<  " " << *it << " " << submeshesowned[k].submeshid << std::endl; */
         nreq++;
       }
       else{
@@ -879,14 +891,14 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
     }
   }
 
-
   nreq=0;
   //IRecv nodes vector
   for(idx_t k=0; k<submeshesowned.size(); k++){
     for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
       if(ownerofsubmesh[*it]!=me){
         MPI_Irecv(&nodestorecv[nreq*maxnodestorecv*4], submeshesowned[k].potentialneighbors_nnodes[*it]*4, REAL_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &requestRecvPtr[nreq]);
-        std::cout << me << " recv from " << ownerofsubmesh[*it] << " " << submeshesowned[k].potentialneighbors_nnodes[*it] << " wt " <<(*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid << std::endl;
+        /* std::cout << me << " recv from " << ownerofsubmesh[*it] << " " << submeshesowned[k].potentialneighbors_nnodes[*it] << " wt " <<(*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid <<  " " << *it << " " <<  submeshesowned[k].submeshid << std::endl; */
+        /* MPI_Recv(&nodestorecv[nreq*maxnodestorecv*4], submeshesowned[k].potentialneighbors_nnodes[*it]*4, REAL_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat); */
         nreq++;
       }
     }
