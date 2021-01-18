@@ -79,9 +79,9 @@ int main(int argc, char *argv[]) {
   FindExternalBoundary(submeshesowned, dim);
   auto t6 = std::chrono::high_resolution_clock::now();
 
-  writeVTK(submeshesowned, esize, dim);
-  writeboundaryVTK(submeshesowned, esize, dim);
-  writeneighbors(submeshesowned, esize);
+  /* writeVTK(submeshesowned, esize, dim); */
+  /* writeboundaryVTK(submeshesowned, esize, dim); */
+  /* writeneighbors(submeshesowned, esize); */
 
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
   auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
