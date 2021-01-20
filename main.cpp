@@ -60,8 +60,7 @@ int main(int argc, char *argv[]) {
 
   auto t3 = std::chrono::high_resolution_clock::now();
   Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
-  MPI_Barrier(comm);
-  Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
+  /* Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm); */
   auto t4 = std::chrono::high_resolution_clock::now();
 
   if(eind) delete [] eind;
@@ -70,13 +69,13 @@ int main(int argc, char *argv[]) {
   updateNodes(submeshesowned, nodesfile, comm);
 
   auto t5 = std::chrono::high_resolution_clock::now();
-  Buildconnectivity(submeshesowned, dim);
-  idx_t method=0;// 0 edgewise, 1 pointwise
-  idx_t numlayers=3;
-  Findboundaryfromconnectivity(submeshesowned, method, numlayers);
-  Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
-  Shareboundary(submeshesowned, ownerofsubmesh, comm);
-  FindExternalBoundary(submeshesowned, dim);
+  /* Buildconnectivity(submeshesowned, dim); */
+  /* idx_t method=0;// 0 edgewise, 1 pointwise */
+  /* idx_t numlayers=1; */
+  /* Findboundaryfromconnectivity(submeshesowned, method, numlayers); */
+  /* Computepotentialneighbors(nsubmeshes, submeshesowned, comm); */
+  /* Shareboundary(submeshesowned, ownerofsubmesh, comm); */
+  /* FindExternalBoundary(submeshesowned, dim, method, numlayers); */
   auto t6 = std::chrono::high_resolution_clock::now();
 
   /* writeVTK(submeshesowned, esize, dim); */

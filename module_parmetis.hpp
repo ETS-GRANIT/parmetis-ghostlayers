@@ -61,25 +61,16 @@ struct submesh{
   //Set of elements to send and recv from each potential neighbour
   std::map<idx_t, std::set<idx_t> > elemstosend;
   std::map<idx_t, std::set<idx_t> > elemstorecv;
+  std::map<idx_t, std::set<idx_t> > nodestosend;
+  std::map<idx_t, std::set<idx_t> > nodestorecv;
 
   //Edges and faces
   std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> boundary_edges;
   std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> boundary_faces;
 
   void Addelems(idx_t *elems, idx_t offset, idx_t nelems, idx_t esize);
-  void buildEdges(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
-  void buildFaces(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
-  void buildMyBoundaryElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
-  void buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
-  void buildMyBoundaryElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
-  void buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
   bool isBoundary(idx_t ielem);
   void computemyextents(idx_t nsubmeshes);
-  void buildMyBoundaryEdges(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
-  void buildMyBoundaryFaces(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
-  void buildPotentialNeighborsBoundaryEdges(std::set<idx_t>::iterator &iter, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
-  void buildPotentialNeighborsElemConnectivity2D(std::set<idx_t>::iterator &iter, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &pn_edges, std::vector<std::vector<idx_t> > &pn_neighbors);
-
 };
 
 bool submesh::isBoundary(idx_t ielem){
@@ -478,12 +469,12 @@ void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t d
     }
 
     outFile << std::endl;
-    outFile << "CELL_TYPES " << nboundaryelems << std::endl;
+    outFile << "CELL_TYPES " << nbelemssend << std::endl;
     idx_t cellType;
     if(dim==3) cellType=10; //tetrahedrons
     if(dim==2 and esize==3) cellType=5; //triangles
     if(dim==2 and esize==4) cellType=9; //quadrangles
-    for(idx_t i=0; i<nboundaryelems; i++){
+    for(idx_t i=0; i<nbelemssend; i++){
       outFile << cellType << std::endl;
     }
 
@@ -529,27 +520,34 @@ void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename
   nodesFile.close();
 }
 
-void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
-  if(dimension==2){
-    for(idx_t k=0;k<submeshesowned.size();k++){
-      std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
-      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
-      submeshesowned[k].buildEdges(edges);
-      submeshesowned[k].buildElemConnectivity2D(edges);
-    }
-  }
-  if(dimension==3){
-    for(idx_t k=0;k<submeshesowned.size();k++){
-      std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
-      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
-      submeshesowned[k].buildFaces(faces);
-      submeshesowned[k].buildElemConnectivity3D(faces);
+void buildBoundaryEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set){
+
+  idx_t nelems=elems.size();
+  idx_t esize=elems[0].size();
+
+  std::set<idx_t>::iterator it=elems_set.begin();
+
+  std::pair<idx_t, idx_t> dummyPair;
+  idx_t sp;
+  for(it=elems_set.begin();it!=elems_set.end();it++){
+    for(idx_t s=0; s<esize; s++){
+      sp = (s+1)%esize;
+      dummyPair = std::make_pair(std::min(elems[*it][s], elems[*it][sp]), std::max(elems[*it][s],elems[*it][sp]));
+      if(edges.find(dummyPair) != edges.end()){
+        edges[dummyPair] = std::make_pair(edges[dummyPair].first, *it);
+      }
+      else{
+        edges.insert({dummyPair, std::make_pair(*it, -1)});
+      }
     }
   }
 }
 
-/* void submesh::buildEdges(){ */
-void submesh::buildEdges(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
+void buildEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
+
+  idx_t nelems=elems.size();
+  idx_t esize=elems[0].size();
+
   std::pair<idx_t, idx_t> dummyPair;
   idx_t sp;
   for(idx_t i=0;i<nelems;i++){
@@ -566,49 +564,14 @@ void submesh::buildEdges(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<id
   }
 }
 
-void submesh::buildPotentialNeighborsBoundaryEdges(std::set<idx_t>::iterator &iter, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
-
-  std::pair<idx_t, idx_t> dummyPair;
-  idx_t sp;
-  for(idx_t i=0;i<potentialneighbors_elems[*iter].size();i++){
-    for(idx_t s=0; s<esize; s++){
-      sp = (s+1)%esize;
-      dummyPair = std::make_pair(std::min(potentialneighbors_elems[*iter][i][s], potentialneighbors_elems[*iter][i][sp]), std::max(potentialneighbors_elems[*iter][i][s],potentialneighbors_elems[*iter][i][sp]));
-      if(edges.find(dummyPair) != edges.end()){
-        edges[dummyPair] = std::make_pair(edges[dummyPair].first, b_elems_ltg[*iter][i]);
-      }
-      else{
-        edges.insert({dummyPair, std::make_pair(b_elems_ltg[*iter][i], -1)});
-      }
-    }
-  }
-}
-
-void submesh::buildMyBoundaryEdges(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
+void buildBoundaryFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::set<idx_t> &elems_set){
   std::set<idx_t>::iterator it;
-  std::pair<idx_t, idx_t> dummyPair;
-  idx_t sp;
-  for(it=boundaryelems.begin();it!=boundaryelems.end();it++){
-    for(idx_t s=0; s<esize; s++){
-      sp = (s+1)%esize;
-      dummyPair = std::make_pair(std::min(elems[*it][s], elems[*it][sp]), std::max(elems[*it][s],elems[*it][sp]));
-      if(edges.find(dummyPair) != edges.end()){
-        edges[dummyPair] = std::make_pair(edges[dummyPair].first, elems_ltg[*it]);
-      }
-      else{
-        edges.insert({dummyPair, std::make_pair(elems_ltg[*it], -1)});
-      }
-    }
-  }
-}
-
-void submesh::buildMyBoundaryFaces(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
-  /* void submesh::buildFaces(){ */
-  std::set<idx_t>::iterator it;
+  idx_t nelems=elems.size();
+  idx_t esize=elems[0].size();
   idx_t fsize=3; //tetrahedron
   std::vector<idx_t> dummy(fsize,-1);
   std::vector<idx_t> sp(fsize,-1);
-  for(it=boundaryelems.begin();it!=boundaryelems.end();it++){
+  for(it=elems_set.begin();it!=elems_set.end();it++){
     for(idx_t s=0; s<esize; s++){
       sp[0] = s;
       for(idx_t k=1;k<fsize;k++){
@@ -619,18 +582,17 @@ void submesh::buildMyBoundaryFaces(std::unordered_map<std::vector<idx_t>, std::p
       }
       std::sort(dummy.begin(), dummy.end());
       if(faces.find(dummy) != faces.end()){
-        faces[dummy] = std::make_pair(faces[dummy].first, elems_ltg[*it]);
+        faces[dummy] = std::make_pair(faces[dummy].first, *it);
       }
       else{
-        faces.insert({dummy, std::make_pair(elems_ltg[*it], -1)});
+        faces.insert({dummy, std::make_pair(*it, -1)});
       }
     }
   }
 }
-
-
-void submesh::buildFaces(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
-  /* void submesh::buildFaces(){ */
+void buildFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
+  idx_t nelems=elems.size();
+  idx_t esize=elems[0].size();
   idx_t fsize=3; //tetrahedron
   std::vector<idx_t> dummy(fsize,-1);
   std::vector<idx_t> sp(fsize,-1);
@@ -654,66 +616,10 @@ void submesh::buildFaces(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,
   }
 }
 
-void submesh::buildPotentialNeighborsElemConnectivity2D(std::set<idx_t>::iterator &iter, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &pn_edges, std::vector<std::vector<idx_t> > &pn_neighbors){
-  /* void submesh::buildElemConnectivity2D(){ */
-  std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>:: iterator it = pn_edges.begin();
-
-  idx_t s1,s2,elem1,elem2,sp;
-  while(it != pn_edges.end())
-  {
-    s1 = it->first.first;
-    s2 = it->first.second;
-    elem1 = b_elems_gtl[*iter][it->second.first];
-    elem2 = b_elems_gtl[*iter][it->second.second];
-
-    if(elem2!=-1){
-      for(idx_t s=0; s<esize; s++){
-        sp = (s+1)%esize;
-        if(((potentialneighbors_elems[*iter][elem1][s] == s1) and (potentialneighbors_elems[*iter][elem1][sp] == s2)) or 
-            ((potentialneighbors_elems[*iter][elem1][s] == s2) and (potentialneighbors_elems[*iter][elem1][sp] == s1))){
-          pn_neighbors[elem1][s] = elem2;
-        }
-        if(((potentialneighbors_elems[*iter][elem2][s] == s1) and (potentialneighbors_elems[*iter][elem2][sp] == s2)) or 
-            ((potentialneighbors_elems[*iter][elem2][s] == s2) and (potentialneighbors_elems[*iter][elem2][sp] == s1))){
-          pn_neighbors[elem2][s] = elem1;
-        }
-      }
-    }
-    it++;
-  }
-}
-void submesh::buildMyBoundaryElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
-  /* void submesh::buildElemConnectivity2D(){ */
+void buildElemConnectivity2D(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<std::vector<idx_t> > &neighbors){
   std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>:: iterator it = edges.begin();
 
-  idx_t s1,s2,elem1,elem2,sp;
-  while(it != edges.end())
-  {
-    s1 = it->first.first;
-    s2 = it->first.second;
-    elem1 = elems_gtl[it->second.first];
-    elem2 = elems_gtl[it->second.second];
-
-    if(elem2!=-1){
-      for(idx_t s=0; s<esize; s++){
-        sp = (s+1)%esize;
-        if(((elems[elem1][s] == s1) and (elems[elem1][sp] == s2)) or 
-            ((elems[elem1][s] == s2) and (elems[elem1][sp] == s1))){
-          boundary_neighbors[elem1][s] = elem2;
-        }
-        if(((elems[elem2][s] == s1) and (elems[elem2][sp] == s2)) or 
-            ((elems[elem2][s] == s2) and (elems[elem2][sp] == s1))){
-          boundary_neighbors[elem2][s] = elem1;
-        }
-      }
-    }
-    it++;
-  }
-}
-
-void submesh::buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
-  /* void submesh::buildElemConnectivity2D(){ */
-  std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>:: iterator it = edges.begin();
+  idx_t esize=elems[0].size();
 
   idx_t s1,s2,elem1,elem2,sp;
   while(it != edges.end())
@@ -740,51 +646,8 @@ void submesh::buildElemConnectivity2D(std::unordered_map<std::pair<idx_t,idx_t>,
   }
 }
 
-void submesh::buildMyBoundaryElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
-  /* void submesh::buildElemConnectivity3D(){ */
-  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>:: iterator it = faces.begin();
-
-  idx_t faceSize=3;//Tetrahedron
-  std::vector<idx_t> faceVert(faceSize,-1);
-  idx_t elem1,elem2;
-  bool cond1;
-  while(it != faces.end())
-  {
-    elem1 = elems_gtl[it->second.first];
-    elem2 = elems_gtl[it->second.second];
-
-    if(elem2!=-1){
-      for(idx_t s=0; s<esize; s++){ //Pour chaque face
-
-        faceVert[0] = elems[elem1][s];
-        for(idx_t k=1; k<faceSize; k++){
-          faceVert[k] = elems[elem1][(s+k)%esize];
-        }
-
-        cond1 = true;
-        for(idx_t k=0;k<faceSize;k++){
-          cond1 = ((std::find(faceVert.begin(), faceVert.end(), it->first[k])!=faceVert.end()) and cond1);
-        }
-        if(cond1) boundary_neighbors[elem1][s] = elem2;
-
-        faceVert[0] = elems[elem2][s];
-        for(idx_t k=1; k<faceSize; k++){
-          faceVert[k] = elems[elem2][(s+k)%esize];
-        }
-
-        cond1 = true;
-        for(idx_t k=0;k<faceSize;k++){
-          cond1 = ((std::find(faceVert.begin(), faceVert.end(), it->first[k])!=faceVert.end()) and cond1);
-        }
-        if(cond1) boundary_neighbors[elem2][s] = elem1;
-      }
-    }
-    it++;
-  }
-}
-
-void submesh::buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
-  /* void submesh::buildElemConnectivity3D(){ */
+void buildElemConnectivity3D(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<std::vector<idx_t> > &neighbors){
+  idx_t esize=elems[0].size();
   std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>:: iterator it = faces.begin();
 
   idx_t faceSize=3;//Tetrahedron
@@ -825,6 +688,28 @@ void submesh::buildElemConnectivity3D(std::unordered_map<std::vector<idx_t>, std
     it++;
   }
 }
+
+void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
+  if(dimension==2){
+    for(idx_t k=0;k<submeshesowned.size();k++){
+      std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
+      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
+      buildEdges(submeshesowned[k].elems, edges);
+      buildElemConnectivity2D(submeshesowned[k].elems, edges, submeshesowned[k].neighbors);
+    }
+  }
+  if(dimension==3){
+    for(idx_t k=0;k<submeshesowned.size();k++){
+      std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
+      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
+      buildFaces(submeshesowned[k].elems, faces);
+      buildElemConnectivity3D(submeshesowned[k].elems, faces, submeshesowned[k].neighbors);
+    }
+  }
+}
+
+
+
 
 void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t method, idx_t numlayers){
 
@@ -922,14 +807,14 @@ void submesh::computemyextents(idx_t nsubmeshes){
 
 }
 
-void FindExternalBoundary(std::vector<submesh> &submeshesowned, idx_t dimension){
+void FindExternalBoundary(std::vector<submesh> &submeshesowned, idx_t dimension, idx_t method, idx_t numlayers){
 
   for(idx_t k; k<submeshesowned.size(); k++){
     //Build my boundary connectivity
     submeshesowned[k].boundary_neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
     if(dimension==2){
-      submeshesowned[k].buildMyBoundaryEdges(submeshesowned[k].boundary_edges);
-      submeshesowned[k].buildMyBoundaryElemConnectivity2D(submeshesowned[k].boundary_edges);
+      buildBoundaryEdges(submeshesowned[k].elems, submeshesowned[k].boundary_edges, submeshesowned[k].boundaryelems);
+      buildElemConnectivity2D(submeshesowned[k].elems, submeshesowned[k].boundary_edges, submeshesowned[k].boundary_neighbors);
 
       std::set<idx_t>::iterator iter;
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
@@ -937,25 +822,72 @@ void FindExternalBoundary(std::vector<submesh> &submeshesowned, idx_t dimension)
 
         std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> pn_edges;
         std::vector<std::vector<idx_t> > pn_neighbors(submeshesowned[k].potentialneighbors_elems[*iter].size(), std::vector<idx_t>(submeshesowned[k].esize,-1));
-        /* std::cout << submeshesowned[k].potentialneighbors_elems[*iter].size() << std::endl; */
 
-        submeshesowned[k].buildPotentialNeighborsBoundaryEdges(iter, pn_edges);
-        submeshesowned[k].buildPotentialNeighborsElemConnectivity2D(iter, pn_edges, pn_neighbors);
+        buildEdges(submeshesowned[k].potentialneighbors_elems[*iter], pn_edges);
+        buildElemConnectivity2D(submeshesowned[k].potentialneighbors_elems[*iter], pn_edges, pn_neighbors);
 
-        /* std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>::iterator it_edges; */
-        /* for(it_edges=pn_edges.begin();it_edges!=pn_edges.end();it_edges++){ */
-        /*   if(submeshesowned[k].boundary_edges.find(it_edges->first)!=submeshesowned[k].boundary_edges.end()){ */
+        std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>::iterator it_edges;
+        for(it_edges=pn_edges.begin();it_edges!=pn_edges.end();it_edges++){
+          if(submeshesowned[k].boundary_edges.find(it_edges->first)!=submeshesowned[k].boundary_edges.end()){
 
-        /*     //GLOBAL TO LOCAL FOR RECEIVE */
-        /*     submeshesowned[k].elemstorecv[*iter].insert(it_edges->second.first); */
-        /*     submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].elems_gtl[submeshesowned[k].boundary_edges[it_edges->first].first]); */
-        /*   } */
-        /* } */
+            //Add elem to recv
+            idx_t elem=it_edges->second.first;
+            submeshesowned[k].elemstorecv[*iter].insert(elem);
+            //Add boundarynodes to recv
+            submeshesowned[k].nodestorecv[*iter].insert(it_edges->first.first);
+            submeshesowned[k].nodestorecv[*iter].insert(it_edges->first.second);
+
+            //Add elem to send
+            elem=submeshesowned[k].boundary_edges[it_edges->first].first;
+            submeshesowned[k].elemstosend[*iter].insert(elem);
+            //Add boundarynodes to send
+            submeshesowned[k].nodestosend[*iter].insert(it_edges->first.first);
+            submeshesowned[k].nodestosend[*iter].insert(it_edges->first.second);
+
+
+          }
+        }
+
+        //If method=1 add cells that have only a point in the boundary points
+        if(method==1){
+          for(idx_t i=0;i<submeshesowned[k].potentialneighbors_elems[*iter].size();i++){
+            for(idx_t j=0;j<submeshesowned[k].esize;j++){
+              if(submeshesowned[k].nodestorecv[*iter].find(submeshesowned[k].potentialneighbors_elems[*iter][i][j])!=submeshesowned[k].nodestorecv[*iter].end()){
+                submeshesowned[k].elemstorecv[*iter].insert(i);
+              }
+            }
+            for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
+                it!=submeshesowned[k].elemstorecv[*iter].end();
+                it++){
+              for(idx_t p=0; p<submeshesowned[k].esize; p++){
+                submeshesowned[k].nodestorecv[*iter].insert(submeshesowned[k].potentialneighbors_elems[*iter][*it][p]);
+              }
+            }
+          }
+        }
+
+        //If method=1 add cells that have only a point in the boundary points
+        if(method==1){
+          for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
+              it!=submeshesowned[k].boundaryelems.end();
+              it++){
+            for(idx_t j=0;j<submeshesowned[k].esize;j++){
+              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].elems[*it][j])!=submeshesowned[k].nodestosend[*iter].end()){
+                submeshesowned[k].elemstosend[*iter].insert(*it);
+              }
+            }
+          }
+          for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
+              it!=submeshesowned[k].elemstosend[*iter].end();
+              it++){
+            for(idx_t p=0; p<submeshesowned[k].esize; p++){
+              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][p]);
+            }
+          }
+        }
       }
     }
     if(dimension==3){
-      submeshesowned[k].buildMyBoundaryFaces(submeshesowned[k].boundary_faces);
-      submeshesowned[k].buildMyBoundaryElemConnectivity3D(submeshesowned[k].boundary_faces);
     }
 
   }
