@@ -736,10 +736,14 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
         for(idx_t j=0;j<submeshesowned[k].esize;j++){
           if(submeshesowned[k].boundarynodes.find(submeshesowned[k].elems[i][j])!=submeshesowned[k].boundarynodes.end()){
             submeshesowned[k].boundaryelems.insert(i);
-            for(idx_t p=0; p<submeshesowned[k].esize; p++){
-              submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[i][p]);
-            }
           }
+        }
+      }
+
+      for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
+          it!=submeshesowned[k].boundaryelems.end();it++){
+        for(idx_t p=0; p<submeshesowned[k].esize; p++){
+          submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[*it][p]);
         }
       }
     }
@@ -768,10 +772,13 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
           for(idx_t j=0;j<submeshesowned[k].esize;j++){
             if(submeshesowned[k].boundarynodes.find(submeshesowned[k].elems[i][j])!=submeshesowned[k].boundarynodes.end()){
               submeshesowned[k].boundaryelems.insert(i);
-              for(idx_t p=0; p<submeshesowned[k].esize; p++){
-                submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[i][p]);
-              }
             }
+          }
+        }
+        for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
+            it!=submeshesowned[k].boundaryelems.end();it++){
+          for(idx_t p=0; p<submeshesowned[k].esize; p++){
+            submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[*it][p]);
           }
         }
       }
