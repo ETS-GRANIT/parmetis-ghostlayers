@@ -856,12 +856,12 @@ void FindExternalBoundary(std::vector<submesh> &submeshesowned, idx_t dimension,
                 submeshesowned[k].elemstorecv[*iter].insert(i);
               }
             }
-            for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-                it!=submeshesowned[k].elemstorecv[*iter].end();
-                it++){
-              for(idx_t p=0; p<submeshesowned[k].esize; p++){
-                submeshesowned[k].nodestorecv[*iter].insert(submeshesowned[k].potentialneighbors_elems[*iter][*it][p]);
-              }
+          }
+          for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
+              it!=submeshesowned[k].elemstorecv[*iter].end();
+              it++){
+            for(idx_t p=0; p<submeshesowned[k].esize; p++){
+              submeshesowned[k].nodestorecv[*iter].insert(submeshesowned[k].potentialneighbors_elems[*iter][*it][p]);
             }
           }
         }
