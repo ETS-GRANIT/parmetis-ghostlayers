@@ -3,12 +3,29 @@
 #include <metis.h>
 #include <chrono>
 #include <assert.h>
+#include <unistd.h> 
+#include <sstream>
 
 #include "module_parmetis.hpp"
+
+static  void wait_for_debugger(int id){
+  int me, nprocs;
+  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+  MPI_Comm_rank(MPI_COMM_WORLD,&me);
+
+  if(id == me) {
+    volatile  int i=0;
+    fprintf(stderr , "pid %ld  waiting  for  debugger\n", (long)getpid ());
+    while(i==0) { /*  change  ’i’ in the  debugger  */ }
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+}
 
 int main(int argc, char *argv[]) {
   int me, nprocs;
   MPI_Init(&argc,&argv);
+
+  /* wait_for_debugger(0); */
 
   MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
   MPI_Comm_rank(MPI_COMM_WORLD,&me);
@@ -70,13 +87,13 @@ int main(int argc, char *argv[]) {
   updateNodes(submeshesowned, nodesfile, comm);
 
   auto t5 = std::chrono::high_resolution_clock::now();
-  Buildconnectivity(submeshesowned, dim);
-  idx_t method=1;// 0 edgewise, 1 pointwise
-  idx_t numlayers=2;
-  Findboundaryfromconnectivity(submeshesowned, method, numlayers);
-  Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
-  Shareboundary(submeshesowned, ownerofsubmesh, comm);
-  FindExternalBoundary(submeshesowned, dim, method, numlayers);
+  /* Buildconnectivity(submeshesowned, dim); */
+  /* idx_t method=1;// 0 edgewise, 1 pointwise */
+  /* idx_t numlayers=2; */
+  /* Findboundaryfromconnectivity(submeshesowned, method, numlayers); */
+  /* Computepotentialneighbors(nsubmeshes, submeshesowned, comm); */
+  /* Shareboundary(submeshesowned, ownerofsubmesh, comm); */
+  /* FindExternalBoundary(submeshesowned, dim, method, numlayers); */
   auto t6 = std::chrono::high_resolution_clock::now();
 
   writeVTK(submeshesowned, esize, dim);
