@@ -33,10 +33,15 @@ int main(int argc, char *argv[]) {
   MPI_Comm comm = MPI_COMM_WORLD;
 
   //User inputs
-  assert(argc >= 3);
+  assert(argc >= 4);
   idx_t nsubmeshes = atoi(argv[1]);
-  std::string elemsfile = argv[2];
-  std::string nodesfile = argv[3];
+  std::string basename = argv[2];
+  std::string elemsfile = basename + ".elems";
+  std::string nodesfile = basename + ".nodes";
+  std::string entreefile = basename + ".entree";
+  std::string sortiefile = basename + ".sortie";
+  idx_t method = atoi(argv[3]);
+  idx_t numlayers = atoi(argv[4]);
 
   idx_t numberingstart = 1;
 
@@ -88,22 +93,29 @@ int main(int argc, char *argv[]) {
 
   auto t5 = std::chrono::high_resolution_clock::now();
   Buildconnectivity(submeshesowned, dim);
-  idx_t method=0;// 0 edgewise, 1 pointwise
-  idx_t numlayers=2;
+  /* idx_t method=0;// 0 edgewise, 1 pointwise */
+  /* idx_t numlayers=1; */
   Findboundaryfromconnectivity(submeshesowned, method, numlayers);
   Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
   Shareboundary(submeshesowned, ownerofsubmesh, comm);
-  FindExternalBoundary(submeshesowned, dim, method, numlayers);
+  FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers);
+  AddElemsAndRenumber(submeshesowned);
   auto t6 = std::chrono::high_resolution_clock::now();
 
-  writeVTK(submeshesowned, esize, dim);
-  writeboundaryVTK(submeshesowned, esize, dim);
+  boundaryConditionsCute(submeshesowned, entreefile);
+  boundaryConditionsCute(submeshesowned, sortiefile);
+
+  /* writeVTK(submeshesowned, esize, dim); */
+  writeCute(submeshesowned, esize, dim);
+  writesendrecvCute(submeshesowned, esize, dim);
+  /* writesendVTK(submeshesowned, esize, dim); */
+  /* writerecvVTK(submeshesowned, esize, dim); */
   /* writeneighbors(submeshesowned, esize); */
 
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
   auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
   auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
-  std::cout << me << " "  << duration1/100000 << " " << duration2/100000 << " " << duration3/100000 << "\n";
+  std::cout << me << " "  << duration1/1.0e6 << " " << duration2/1.0e6 << " " << duration3/1.0e6 << "\n";
 
   MPI_Finalize();
 }
