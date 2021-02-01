@@ -1,3 +1,4 @@
+#include "cgnslib.h"
 #include <iostream>
 #include <parmetis.h>
 #include <metis.h>
@@ -8,18 +9,13 @@
 
 #include "module_parmetis.hpp"
 
-static  void wait_for_debugger(int id){
-  int me, nprocs;
-  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
-  MPI_Comm_rank(MPI_COMM_WORLD,&me);
-
-  if(id == me) {
-    volatile  int i=0;
-    fprintf(stderr , "pid %ld  waiting  for  debugger\n", (long)getpid ());
-    while(i==0) { /*  change  ’i’ in the  debugger  */ }
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-}
+#if CGNSVERSION < 3100
+# define cgsizet int
+#else
+# if CGBUILDSCOPE
+# error enumeration scoping needs to be off
+# endif
+#endif
 
 int main(int argc, char *argv[]) {
   int me, nprocs;
@@ -89,33 +85,33 @@ int main(int argc, char *argv[]) {
   if(eind) delete [] eind;
   if(part) delete [] part;
 
-  updateNodes(submeshesowned, nodesfile, comm);
+  /* updateNodes(submeshesowned, nodesfile, comm); */
 
-  auto t5 = std::chrono::high_resolution_clock::now();
-  Buildconnectivity(submeshesowned, dim);
+  /* auto t5 = std::chrono::high_resolution_clock::now(); */
+  /* Buildconnectivity(submeshesowned, dim); */
   /* idx_t method=0;// 0 edgewise, 1 pointwise */
   /* idx_t numlayers=1; */
-  Findboundaryfromconnectivity(submeshesowned, method, numlayers);
-  Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
-  Shareboundary(submeshesowned, ownerofsubmesh, comm);
-  FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers);
-  AddElemsAndRenumber(submeshesowned);
-  auto t6 = std::chrono::high_resolution_clock::now();
+  /* Findboundaryfromconnectivity(submeshesowned, method, numlayers); */
+  /* Computepotentialneighbors(nsubmeshes, submeshesowned, comm); */
+  /* Shareboundary(submeshesowned, ownerofsubmesh, comm); */
+  /* FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers); */
+  /* AddElemsAndRenumber(submeshesowned); */
+  /* auto t6 = std::chrono::high_resolution_clock::now(); */
 
-  boundaryConditionsCute(submeshesowned, entreefile);
-  boundaryConditionsCute(submeshesowned, sortiefile);
+  /* boundaryConditionsCute(submeshesowned, entreefile); */
+  /* boundaryConditionsCute(submeshesowned, sortiefile); */
 
   /* writeVTK(submeshesowned, esize, dim); */
-  writeCute(submeshesowned, esize, dim);
-  writesendrecvCute(submeshesowned, esize, dim);
+  /* writeCute(submeshesowned, esize, dim); */
+  /* writesendrecvCute(submeshesowned, esize, dim); */
   /* writesendVTK(submeshesowned, esize, dim); */
   /* writerecvVTK(submeshesowned, esize, dim); */
   /* writeneighbors(submeshesowned, esize); */
 
-  auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
-  auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
-  auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
-  std::cout << me << " "  << duration1/1.0e6 << " " << duration2/1.0e6 << " " << duration3/1.0e6 << "\n";
+  /* auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count(); */
+  /* auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count(); */
+  /* auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count(); */
+  /* std::cout << me << " "  << duration1/1.0e6 << " " << duration2/1.0e6 << " " << duration3/1.0e6 << "\n"; */
 
   MPI_Finalize();
 }

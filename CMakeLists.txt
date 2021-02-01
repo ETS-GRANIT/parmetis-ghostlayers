@@ -32,7 +32,7 @@ ENDIF(PARMETIS_INCLUDE_DIR)
 file(GLOB SOURCES "*.cpp")
 add_executable(main ${SOURCES})
 
-target_link_libraries(main ${MPI_LIBRARIES} ${PARMETIS_LIBRARY} ${METIS_LIBRARY})
+target_link_libraries(main ${MPI_LIBRARIES} ${PARMETIS_LIBRARY} ${METIS_LIBRARY} cgns)
 
 if(MPI_COMPILE_FLAGS)
   set_target_properties(main PROPERTIES
