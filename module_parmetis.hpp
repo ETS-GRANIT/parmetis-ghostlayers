@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <assert.h>
 
 #include "mpi.h"
 
@@ -145,7 +146,6 @@ void Computesubmeshownership(idx_t nsubmeshes, idx_t &nsubmeshesowned, std::vect
   /* } */
 }
 
-//ParallelReadMesh refactored from ParallelReadMesh in parmetis/programs/io.c
 void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t esize, std::vector<submesh> &submeshesowned, std::vector<idx_t> const ownerofsubmesh, MPI_Comm comm){
 
   std::stringstream line;
@@ -279,6 +279,52 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
   for(it=submesheselems.begin();it!=submesheselems.end();it++){
     delete [] it->second;
   }
+}
+
+void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm){
+
+  int index_file, index_base, n_bases, base, physDim, cellDim, nZones, zone;
+  int nElems;
+  cgsize_t nVert;
+  int nCoords;
+  char basename[40];
+  char zonename[40];
+  char name[40];
+  cgsize_t sizes[2];
+  ZoneType_t zoneType;
+  DataType_t dataType;
+  double *x, *z;
+
+  if (cg_open(filename.c_str(),CG_MODE_READ,&index_file)) cg_error_exit();
+  if(cg_nbases(index_file, &n_bases)!= CG_OK) cg_get_error();
+  if(n_bases != 1) cg_get_error(); 
+  base=1;
+  if(cg_base_read(index_file, base, basename, &cellDim, &physDim) != CG_OK) cg_get_error();
+  if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
+  zone = 1;
+  if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
+  assert(zoneType == Unstructured);
+  if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
+  std::cout << zonename << std::endl;
+  nVert = sizes[0];
+  nElems = sizes[1];
+  std::cout << nVert << " " << nElems<< std::endl;
+  if(cg_ncoords(index_file, base, zone, &nCoords) != CG_OK) cg_get_error();
+  std::cout << nCoords << std::endl;
+  if(cg_coord_info(index_file, base, zone, 1, &dataType, name) != CG_OK) cg_get_error();
+  cgsize_t one = 1;
+  std::cout << name << std::endl;
+  x = new double[nVert];
+  if(cg_coord_read(index_file, base, zone, name, RealDouble, &one, &nVert, x) != CG_OK) cg_get_error();
+  std::cout << nVert << std::endl;
+  std::cout << "x0 " << x[0] << std::endl;
+  if(cg_coord_info(index_file, base, zone, 3, &dataType, name) != CG_OK) cg_get_error();
+  std::cout << name << std::endl;
+  z = new double[nVert];
+  if(cg_coord_read(index_file, base, zone, name, RealDouble, &one, &nVert, z) != CG_OK) cg_get_error();
+  std::cout << nVert << std::endl;
+  std::cout << "z0 " << z[0] << std::endl;
+  
 }
 
 //ParallelReadMesh refactored from ParallelReadMesh in parmetis/programs/io.c

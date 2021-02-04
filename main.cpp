@@ -21,21 +21,15 @@ int main(int argc, char *argv[]) {
   int me, nprocs;
   MPI_Init(&argc,&argv);
 
-  /* wait_for_debugger(0); */
-
   MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
   MPI_Comm_rank(MPI_COMM_WORLD,&me);
 
   MPI_Comm comm = MPI_COMM_WORLD;
 
   //User inputs
-  assert(argc >= 4);
+  assert(argc >= 5);
   idx_t nsubmeshes = atoi(argv[1]);
   std::string basename = argv[2];
-  std::string elemsfile = basename + ".elems";
-  std::string nodesfile = basename + ".nodes";
-  std::string entreefile = basename + ".entree";
-  std::string sortiefile = basename + ".sortie";
   idx_t method = atoi(argv[3]);
   idx_t numlayers = atoi(argv[4]);
 
@@ -56,34 +50,38 @@ int main(int argc, char *argv[]) {
   ubvec[0] = 1.05;
 
   //Read the element mesh file and construct all the vectors needed by parmetis
-  ParallelReadMesh(elmdist, eptr, eind, part, esize, dim, numberingstart, elemsfile, comm);
-
-  assert(dim==2 or dim==3);
-  if(dim==2){
-    assert(esize==3 or esize==4); //Triangles or quadrangles for 2D (could be extented)
+  /* ParallelReadMesh(elmdist, eptr, eind, part, esize, dim, numberingstart, elemsfile, comm); */
+  if(me==0){
+    ParallelReadMeshCGNS(elmdist, eptr, eind, part, esize, dim, numberingstart, basename, comm);
   }
-  else if(dim==3){
-    assert(esize==4); //Only tet for 3D
-  }
-
-  auto t1 = std::chrono::high_resolution_clock::now();
-  ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, &options, &edgecut, part, &comm);
-  auto t2 = std::chrono::high_resolution_clock::now();
-
-  idx_t nsubmeshesowned;
-  std::vector<submesh> submeshesowned;
-  std::vector<idx_t> ownerofsubmesh;
-
-  if(eptr) delete [] eptr;
-
-  auto t3 = std::chrono::high_resolution_clock::now();
-  Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
-  Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
-  auto t4 = std::chrono::high_resolution_clock::now();
-
   MPI_Barrier(comm);
-  if(eind) delete [] eind;
-  if(part) delete [] part;
+
+  /* assert(dim==2 or dim==3); */
+  /* if(dim==2){ */
+  /*   assert(esize==3 or esize==4); //Triangles or quadrangles for 2D (could be extented) */
+  /* } */
+  /* else if(dim==3){ */
+  /*   assert(esize==4); //Only tet for 3D */
+  /* } */
+
+  /* auto t1 = std::chrono::high_resolution_clock::now(); */
+  /* ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, &options, &edgecut, part, &comm); */
+  /* auto t2 = std::chrono::high_resolution_clock::now(); */
+
+  /* idx_t nsubmeshesowned; */
+  /* std::vector<submesh> submeshesowned; */
+  /* std::vector<idx_t> ownerofsubmesh; */
+
+  /* if(eptr) delete [] eptr; */
+
+  /* auto t3 = std::chrono::high_resolution_clock::now(); */
+  /* Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm); */
+  /* Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm); */
+  /* auto t4 = std::chrono::high_resolution_clock::now(); */
+
+  /* MPI_Barrier(comm); */
+  /* if(eind) delete [] eind; */
+  /* if(part) delete [] part; */
 
   /* updateNodes(submeshesowned, nodesfile, comm); */
 
