@@ -51,65 +51,60 @@ int main(int argc, char *argv[]) {
 
   //Read the element mesh file and construct all the vectors needed by parmetis
   /* ParallelReadMesh(elmdist, eptr, eind, part, esize, dim, numberingstart, elemsfile, comm); */
-  if(me==0){
-    ParallelReadMeshCGNS(elmdist, eptr, eind, part, esize, dim, numberingstart, basename, comm);
+  ParallelReadMeshCGNS(elmdist, eptr, eind, part, esize, dim, numberingstart, basename, comm);
+
+  assert(dim==2 or dim==3);
+  if(dim==2){
+    assert(esize==3 or esize==4); //Triangles or quadrangles for 2D (could be extented)
   }
+  else if(dim==3){
+    assert(esize==4); //Only tet for 3D
+  }
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+  ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, &options, &edgecut, part, &comm);
+  auto t2 = std::chrono::high_resolution_clock::now();
+
+  idx_t nsubmeshesowned;
+  std::vector<submesh> submeshesowned;
+  std::vector<idx_t> ownerofsubmesh;
+
+  if(eptr) delete [] eptr;
+
+  auto t3 = std::chrono::high_resolution_clock::now();
+  Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
+  Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
+  auto t4 = std::chrono::high_resolution_clock::now();
+
   MPI_Barrier(comm);
+  if(eind) delete [] eind;
+  if(part) delete [] part;
 
-  /* assert(dim==2 or dim==3); */
-  /* if(dim==2){ */
-  /*   assert(esize==3 or esize==4); //Triangles or quadrangles for 2D (could be extented) */
-  /* } */
-  /* else if(dim==3){ */
-  /*   assert(esize==4); //Only tet for 3D */
-  /* } */
+  updateNodesCGNS(submeshesowned, basename, comm);
 
-  /* auto t1 = std::chrono::high_resolution_clock::now(); */
-  /* ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, &options, &edgecut, part, &comm); */
-  /* auto t2 = std::chrono::high_resolution_clock::now(); */
-
-  /* idx_t nsubmeshesowned; */
-  /* std::vector<submesh> submeshesowned; */
-  /* std::vector<idx_t> ownerofsubmesh; */
-
-  /* if(eptr) delete [] eptr; */
-
-  /* auto t3 = std::chrono::high_resolution_clock::now(); */
-  /* Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm); */
-  /* Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm); */
-  /* auto t4 = std::chrono::high_resolution_clock::now(); */
-
-  /* MPI_Barrier(comm); */
-  /* if(eind) delete [] eind; */
-  /* if(part) delete [] part; */
-
-  /* updateNodes(submeshesowned, nodesfile, comm); */
-
-  /* auto t5 = std::chrono::high_resolution_clock::now(); */
-  /* Buildconnectivity(submeshesowned, dim); */
-  /* idx_t method=0;// 0 edgewise, 1 pointwise */
-  /* idx_t numlayers=1; */
-  /* Findboundaryfromconnectivity(submeshesowned, method, numlayers); */
-  /* Computepotentialneighbors(nsubmeshes, submeshesowned, comm); */
-  /* Shareboundary(submeshesowned, ownerofsubmesh, comm); */
-  /* FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers); */
-  /* AddElemsAndRenumber(submeshesowned); */
-  /* auto t6 = std::chrono::high_resolution_clock::now(); */
+  auto t5 = std::chrono::high_resolution_clock::now();
+  Buildconnectivity(submeshesowned, dim);
+  Findboundaryfromconnectivity(submeshesowned, method, numlayers);
+  Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
+  Shareboundary(submeshesowned, ownerofsubmesh, comm);
+  FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers);
+  AddElemsAndRenumber(submeshesowned);
+  auto t6 = std::chrono::high_resolution_clock::now();
 
   /* boundaryConditionsCute(submeshesowned, entreefile); */
   /* boundaryConditionsCute(submeshesowned, sortiefile); */
 
-  /* writeVTK(submeshesowned, esize, dim); */
+  writeVTK(submeshesowned, esize, dim);
   /* writeCute(submeshesowned, esize, dim); */
   /* writesendrecvCute(submeshesowned, esize, dim); */
   /* writesendVTK(submeshesowned, esize, dim); */
   /* writerecvVTK(submeshesowned, esize, dim); */
   /* writeneighbors(submeshesowned, esize); */
 
-  /* auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count(); */
-  /* auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count(); */
-  /* auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count(); */
-  /* std::cout << me << " "  << duration1/1.0e6 << " " << duration2/1.0e6 << " " << duration3/1.0e6 << "\n"; */
+  auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
+  auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
+  auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
+  std::cout << me << " "  << duration1/1.0e6 << " " << duration2/1.0e6 << " " << duration3/1.0e6 << "\n";
 
   MPI_Finalize();
 }

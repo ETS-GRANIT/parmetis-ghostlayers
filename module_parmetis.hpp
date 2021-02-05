@@ -140,10 +140,6 @@ void Computesubmeshownership(idx_t nsubmeshes, idx_t &nsubmeshesowned, std::vect
       }
     }
   }
-
-  /* for(idx_t k=0; k<nsubmeshesowned; k++){ */
-  /*   std::cout << me << " owns " << submeshesowned[k].submeshid << std::endl; */
-  /* } */
 }
 
 void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t esize, std::vector<submesh> &submeshesowned, std::vector<idx_t> const ownerofsubmesh, MPI_Comm comm){
@@ -273,6 +269,9 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
     }
   }
 
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    std::cout << me << " " << submeshesowned[k].elems.size() << " " << submeshesowned[k].nelems << std::endl;
+  }
 
   //Free of submesheselems
   std::map<idx_t, idx_t*>::iterator it;
@@ -283,17 +282,23 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
 
 void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm){
 
+  int me, nprocs;
+  MPI_Comm_size(comm,&nprocs);
+  MPI_Comm_rank(comm,&me);
+
   int index_file, index_base, n_bases, base, physDim, cellDim, nZones, zone;
-  int nElems;
-  cgsize_t nVert;
+  int gnelems, nelems;
+  int nSections;
+  cgsize_t gnnodes;
   int nCoords;
   char basename[40];
   char zonename[40];
   char name[40];
+  char secname[40];
   cgsize_t sizes[2];
-  ZoneType_t zoneType;
-  DataType_t dataType;
-  double *x, *z;
+  CGNS_ENUMV(ZoneType_t) zoneType;
+  CGNS_ENUMV(DataType_t) dataType;
+  CGNS_ENUMV(ElementType_t) type;
 
   if (cg_open(filename.c_str(),CG_MODE_READ,&index_file)) cg_error_exit();
   if(cg_nbases(index_file, &n_bases)!= CG_OK) cg_get_error();
@@ -305,26 +310,62 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
   assert(zoneType == Unstructured);
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
-  std::cout << zonename << std::endl;
-  nVert = sizes[0];
-  nElems = sizes[1];
-  std::cout << nVert << " " << nElems<< std::endl;
-  if(cg_ncoords(index_file, base, zone, &nCoords) != CG_OK) cg_get_error();
-  std::cout << nCoords << std::endl;
-  if(cg_coord_info(index_file, base, zone, 1, &dataType, name) != CG_OK) cg_get_error();
-  cgsize_t one = 1;
-  std::cout << name << std::endl;
-  x = new double[nVert];
-  if(cg_coord_read(index_file, base, zone, name, RealDouble, &one, &nVert, x) != CG_OK) cg_get_error();
-  std::cout << nVert << std::endl;
-  std::cout << "x0 " << x[0] << std::endl;
-  if(cg_coord_info(index_file, base, zone, 3, &dataType, name) != CG_OK) cg_get_error();
-  std::cout << name << std::endl;
-  z = new double[nVert];
-  if(cg_coord_read(index_file, base, zone, name, RealDouble, &one, &nVert, z) != CG_OK) cg_get_error();
-  std::cout << nVert << std::endl;
-  std::cout << "z0 " << z[0] << std::endl;
-  
+  gnnodes = sizes[0];
+  gnelems = sizes[1];
+
+  //Create elmdist
+  elmdist = new idx_t[nprocs+1];
+  elmdist[0] = 0;
+  idx_t j=gnelems;idx_t k;
+  for(idx_t i=0; i<nprocs; i++){
+    k = j/(nprocs-i);
+    elmdist[i+1] = elmdist[i]+k;
+    j -= k;
+  }
+  nelems = elmdist[me+1]-elmdist[me];
+
+  if(cg_nsections(index_file, base, zone, &nSections) != CG_OK) cg_get_error();
+  int sec = 1;
+  int nBdry;
+  cgsize_t eBeg, eEnd, *conn;
+  int parentFlag;
+  if(cg_section_read(index_file, base, zone, sec, secname, &type,
+        &eBeg, &eEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+  switch (type)
+  {
+    case TETRA_4:
+      esize = 4;
+      dim = 3;
+      conn = new cgsize_t[nelems*esize]; break;
+    case TRI_3:
+      esize = 3;
+      dim = 2;
+      conn = new cgsize_t[nelems*esize]; break;
+    default:
+      exit(0);break;
+  }
+
+
+  // Conectivity starts numbering at 1 !!!
+  eBeg=elmdist[me]+1;
+  eEnd=elmdist[me+1];
+  if(cg_elements_partial_read(index_file, base, zone, sec, eBeg, eEnd, conn, NULL) != CG_OK) cg_get_error();
+  eind = new idx_t[esize*nelems];
+  part = new idx_t[nelems];
+  eptr = new idx_t[nelems+1];
+
+  for(idx_t i=0;i<nelems;i++){
+    for(idx_t j=0;j<esize;j++){
+      /* eind[i*esize+j] = (idx_t) (conn[i*esize+j]-1); */
+      eind[i*esize+j] = (idx_t) (conn[i*esize+j]-1);
+    }
+  }
+  for(idx_t i=0;i<=nelems;i++){
+    eptr[i] = esize*i;
+  }
+
+  if (cg_close(index_file)) cg_error_exit();
+
 }
 
 //ParallelReadMesh refactored from ParallelReadMesh in parmetis/programs/io.c
@@ -553,14 +594,6 @@ void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     if(dim==2 and esize==4) cellType=9; //quadrangles
     for(idx_t i=0; i<nElems; i++){
       outFile << cellType << std::endl;
-    }
-
-    outFile << std::endl;
-    outFile << "POINT_DATA " << nNodes << std::endl;
-    outFile << "SCALARS b float" << std::endl;
-    outFile << "LOOKUP_TABLE default" << std::endl;
-    for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][2] << std::endl;
     }
   }
 }
@@ -814,6 +847,79 @@ void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename
     }
   }
   nodesFile.close();
+}
+
+void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename, MPI_Comm comm){
+  idx_t nprocs, me;
+  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+  MPI_Comm_rank(MPI_COMM_WORLD,&me);
+
+  int index_file, index_base, n_bases, base, physDim, cellDim, nZones, zone;
+  int gnelems, nelems;
+  int nSections;
+  cgsize_t gnnodes;
+  int nCoords;
+  char basename[40];
+  char zonename[40];
+  char name[40];
+  char secname[40];
+  cgsize_t sizes[2];
+  CGNS_ENUMV(ZoneType_t) zoneType;
+  CGNS_ENUMV(DataType_t) dataType;
+  CGNS_ENUMV(ElementType_t) type;
+
+  if (cg_open(filename.c_str(),CG_MODE_READ,&index_file)) cg_error_exit();
+  if(cg_nbases(index_file, &n_bases)!= CG_OK) cg_get_error();
+  if(n_bases != 1) cg_get_error(); 
+  base=1;
+  if(cg_base_read(index_file, base, basename, &cellDim, &physDim) != CG_OK) cg_get_error();
+  if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
+  zone = 1;
+  if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
+  assert(zoneType == Unstructured);
+  if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
+  gnnodes = sizes[0];
+  gnelems = sizes[1];
+
+  if(cg_ncoords(index_file, base, zone, &nCoords) != CG_OK) cg_get_error();
+  cgsize_t one = 1;
+  double *x, *y, *z;
+
+  if(cg_coord_info(index_file, base, zone, 1, &dataType, zonename) != CG_OK) cg_get_error();
+  x = new double[gnnodes];
+  if(cg_coord_read(index_file, base, zone, zonename, RealDouble,
+        &one, &gnnodes, x) != CG_OK) cg_get_error();
+
+  if(cg_coord_info(index_file, base, zone, 2, &dataType, zonename) != CG_OK) cg_get_error();
+  y = new double[gnnodes];
+  if(cg_coord_read(index_file, base, zone, zonename, RealDouble,
+        &one, &gnnodes, y) != CG_OK) cg_get_error();
+
+  if(cg_coord_info(index_file, base, zone, 3, &dataType, zonename) != CG_OK) cg_get_error();
+  z = new double[gnnodes];
+  if(cg_coord_read(index_file, base, zone, zonename, RealDouble,
+        &one, &gnnodes, z) != CG_OK) cg_get_error();
+
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    submeshesowned[k].nnodes = submeshesowned[k].nodesindex.size();
+    submeshesowned[k].nodes.resize(submeshesowned[k].nnodes, std::vector<real_t>(3, 0.));
+  }
+
+  std::vector<idx_t> nloc(submeshesowned.size(), 0);
+  real_t sx, sy, sz;
+  for(idx_t i=0; i<gnnodes; i++){
+    for(idx_t k=0; k<submeshesowned.size(); k++){
+      if(submeshesowned[k].nodesindex.find(i)!=submeshesowned[k].nodesindex.end()){
+        submeshesowned[k].nodes[nloc[k]][0] = x[i];
+        submeshesowned[k].nodes[nloc[k]][1] = y[i];
+        submeshesowned[k].nodes[nloc[k]][2] = z[i];
+        submeshesowned[k].nodes_ltg.insert({nloc[k], i});
+        submeshesowned[k].nodes_gtl.insert({i, nloc[k]});
+        nloc[k] += 1;
+      }
+    }
+  }
+  if (cg_close(index_file)) cg_error_exit();
 }
 
 void buildBoundaryEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set){
@@ -1812,7 +1918,6 @@ void AddElemsAndRenumber(std::vector<submesh> &submeshesowned){
         ind++;
       }
     }
-    /* std::cout << submeshesowned[k].submeshid << " " << submeshesowned[k].nelems << " " << ind << std::endl; */
 
     for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
         iter!=submeshesowned[k].potentialneighbors.end();
@@ -1827,7 +1932,6 @@ void AddElemsAndRenumber(std::vector<submesh> &submeshesowned){
         }
       }
     }
-    /* std::cout << submeshesowned[k].submeshid << " " << submeshesowned[k].nelems << " " << ind << std::endl; */
 
     for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
         iter!=submeshesowned[k].potentialneighbors.end();
@@ -1837,11 +1941,10 @@ void AddElemsAndRenumber(std::vector<submesh> &submeshesowned){
           it++){
         idx_t itglobloc = submeshesowned[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[*it]];
         submeshesowned[k].erenumber[itglobloc] = ind;
-        submeshesowned[k].erenumber[ind] = itglobloc;
+        submeshesowned[k].erenumberr[ind] = itglobloc;
         ind++;
       }
     }
-    /* std::cout << submeshesowned[k].submeshid << " " << submeshesowned[k].nelems << " " << ind <<  " " << ind-submeshesowned[k].nelems << std::endl; */
 
 
   }
