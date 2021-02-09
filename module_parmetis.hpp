@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <assert.h>
+#include "pcgnslib.h"
 
 #include "mpi.h"
 
@@ -76,6 +77,9 @@ struct submesh{
   //Edges and faces
   std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> boundary_edges;
   std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> boundary_faces;
+
+  //Set of nodes for boundary conditions
+  std::map<idx_t, std::set<idx_t> > boundary_conditions;
 
   void Addelems(idx_t *elems, idx_t offset, idx_t nelems, idx_t esize);
   bool isBoundary(idx_t ielem);
@@ -496,16 +500,22 @@ void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string f
   if(cg_nbocos(index_file, base, zone, &nBocos) != CG_OK) cg_get_error();
   for(int boco=1; boco<=nBocos; boco++)
   {
-    /* Read the info for this boundary condition. */
     if(cg_boco_info(index_file, base, zone, boco, boconame, &bocoType,
           &ptsetType, &nBCNodes, &normalIndex,
           &normListFlag, &normDataType, &nDataSet) != CG_OK) cg_get_error();
-    /* Read the element ID’s. */
     bcnodes = new cgsize_t[nBCNodes];
     if(cg_boco_read(index_file, base, zone, boco, bcnodes,
           NULL) != CG_OK) cg_get_error();
-    /* And much more to make it fit into the */
-    /* internal datastructures. */
+   
+    for(cgsize_t i=0; i<nBCNodes; i++){
+      for(int k=0; k<submeshesowned.size(); k++){
+        if(submeshesowned[k].nodes_gtl.count(bcnodes[i]) != 0){
+          submeshesowned[k].boundary_conditions[boco].insert(bcnodes[i]);
+        }
+      }
+    }
+      
+    delete [] bcnodes;
   }
 }
 
@@ -605,6 +615,85 @@ void writeCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
       outFile << std::endl;
     }
   }
+}
+
+void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh){
+  idx_t nprocs, me;
+  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+  MPI_Comm_rank(MPI_COMM_WORLD,&me);
+
+  int index_file, index_base, index_zone, n_bases, base, physDim, cellDim, nZones, zone, index_coord;
+  int gnelems, nelems;
+  int nSections;
+  cgsize_t gnnodes;
+  int nCoords;
+  const char *zonename;
+  char name[40];
+  char secname[40];
+  cgsize_t sizes[2];
+  CGNS_ENUMV(ZoneType_t) zoneType;
+  CGNS_ENUMV(DataType_t) dataType;
+  CGNS_ENUMV(ElementType_t) type;
+  double *coord;
+
+  if (cgp_open("Mesh_Output.cgns",CG_MODE_WRITE,&index_file)) cg_error_exit();
+  int icelldim=2;
+  int iphysdim=2;
+  if(me==0){
+    const char *basename = "Base";
+    cg_base_write(index_file,basename,icelldim,iphysdim,&index_base);
+  }
+
+
+  /* if (cg_open("Mesh_Output.cgns",CG_MODE_WRITE,&index_file)) cg_error_exit(); */
+  /* int icelldim=2; */
+  /* int iphysdim=2; */
+  /* if(me==0){ */
+  /*   cg_base_write(index_file,basename,icelldim,iphysdim,&index_base); */
+  /* } */
+  /* MPI_Barrier(MPI_COMM_WORLD); */
+  /* index_base = 1; */
+  /* std::cout << basename << " " << index_file << " " <<  index_base << " " << me << std::endl; */
+  /* std::map<idx_t, idx_t> submeshlocid; */
+  /* for(idx_t i=0;i<submeshesowned.size();i++){ */
+  /*   submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i)); */
+  /* } */
+
+  /* for(int k=0; k<ownerofsubmesh.size(); k++){ */
+  /*   if(ownerofsubmesh[k]==me){ */
+  /*     std::stringstream zss; */
+  /*     zss << "River_" << submeshesowned[submeshlocid[k]].submeshid; */
+  /*     std::cout << zss.str() << std::endl; */
+  /*     zonename = zss.str().c_str(); */
+  /*     cgsize_t isize[1][3]; */
+  /*     isize[0][0]=submeshesowned[submeshlocid[k]].nodes.size(); */
+  /*     isize[0][1]=submeshesowned[submeshlocid[k]].elems.size(); */
+  /*     isize[0][2]=0; */
+  /*     cg_zone_write(index_file,index_base,zonename,*isize,Unstructured,&index_zone); */
+  /*   } */
+  /*   MPI_Barrier(MPI_COMM_WORLD); */
+  /* } */
+
+  /* for(int k=0; k<submeshesowned.size(); k++){ */
+  /*   index_zone = submeshesowned[k].submeshid; */
+
+  /*   coord = new double[submeshesowned[k].nodes.size()]; */
+  /*   for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
+  /*     coord[i] = submeshesowned[k].nodes[i][0]; */
+  /*   } */
+  /*   cg_coord_write(index_file,index_base,index_zone,RealDouble,"CoordinateX",coord,&index_coord); */
+  /*   for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
+  /*     coord[i] = submeshesowned[k].nodes[i][1]; */
+  /*   } */
+  /*   cg_coord_write(index_file,index_base,index_zone,RealDouble,"CoordinateY",coord,&index_coord); */
+  /*   for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
+  /*     coord[i] = submeshesowned[k].nodes[i][2]; */
+  /*   } */
+  /*   cg_coord_write(index_file,index_base,index_zone,RealDouble,"CoordinateZ",coord,&index_coord); */
+
+  /*   delete [] coord; */
+  /* } */
+
 }
 
 void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
