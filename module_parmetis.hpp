@@ -269,10 +269,6 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
     }
   }
 
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    std::cout << me << " " << submeshesowned[k].elems.size() << " " << submeshesowned[k].nelems << std::endl;
-  }
-
   //Free of submesheselems
   std::map<idx_t, idx_t*>::iterator it;
   for(it=submesheselems.begin();it!=submesheselems.end();it++){
@@ -339,6 +335,10 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
       conn = new cgsize_t[nelems*esize]; break;
     case TRI_3:
       esize = 3;
+      dim = 2;
+      conn = new cgsize_t[nelems*esize]; break;
+    case QUAD_4:
+      esize = 4;
       dim = 2;
       conn = new cgsize_t[nelems*esize]; break;
     default:

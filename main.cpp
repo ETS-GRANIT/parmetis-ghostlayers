@@ -97,8 +97,8 @@ int main(int argc, char *argv[]) {
   writeVTK(submeshesowned, esize, dim);
   /* writeCute(submeshesowned, esize, dim); */
   /* writesendrecvCute(submeshesowned, esize, dim); */
-  /* writesendVTK(submeshesowned, esize, dim); */
-  /* writerecvVTK(submeshesowned, esize, dim); */
+  writesendVTK(submeshesowned, esize, dim);
+  writerecvVTK(submeshesowned, esize, dim);
   /* writeneighbors(submeshesowned, esize); */
 
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
