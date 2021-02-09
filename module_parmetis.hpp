@@ -458,6 +458,57 @@ void ParallelReadMesh(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part,
   meshFile.close();
 }
 
+void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string filename){
+  int index_file, index_base, n_bases, base, physDim, cellDim, nZones, zone, nBocos;
+  int normalIndex, nDataSet;
+  int gnelems, nelems;
+  int nSections;
+  cgsize_t gnnodes;
+  cgsize_t normListFlag;
+  int nCoords;
+  char basename[40];
+  char zonename[40];
+  char name[40];
+  char secname[40];
+  char boconame[40];
+  cgsize_t sizes[2];
+  CGNS_ENUMV(ZoneType_t) zoneType;
+  CGNS_ENUMV(DataType_t) dataType, normDataType;
+  CGNS_ENUMV(ElementType_t) type;
+  CGNS_ENUMV(BCType_t) bocoType;
+  CGNS_ENUMV(PointSetType_t) ptsetType;
+  cgsize_t nBCNodes;
+  cgsize_t *bcnodes;
+
+  if (cg_open(filename.c_str(),CG_MODE_READ,&index_file)) cg_error_exit();
+  if(cg_nbases(index_file, &n_bases)!= CG_OK) cg_get_error();
+  if(n_bases != 1) cg_get_error(); 
+  base=1;
+  if(cg_base_read(index_file, base, basename, &cellDim, &physDim) != CG_OK) cg_get_error();
+  if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
+  zone = 1;
+  if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
+  assert(zoneType == Unstructured);
+  if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
+  gnnodes = sizes[0];
+  gnelems = sizes[1];
+
+  if(cg_nbocos(index_file, base, zone, &nBocos) != CG_OK) cg_get_error();
+  for(int boco=1; boco<=nBocos; boco++)
+  {
+    /* Read the info for this boundary condition. */
+    if(cg_boco_info(index_file, base, zone, boco, boconame, &bocoType,
+          &ptsetType, &nBCNodes, &normalIndex,
+          &normListFlag, &normDataType, &nDataSet) != CG_OK) cg_get_error();
+    /* Read the element ID’s. */
+    bcnodes = new cgsize_t[nBCNodes];
+    if(cg_boco_read(index_file, base, zone, boco, bcnodes,
+          NULL) != CG_OK) cg_get_error();
+    /* And much more to make it fit into the */
+    /* internal datastructures. */
+  }
+}
+
 void boundaryConditionsCute(std::vector<submesh> &submeshesowned, std::string file){
   idx_t nnodesin;
   idx_t *nnodesout = new idx_t[submeshesowned.size()];

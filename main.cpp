@@ -91,8 +91,7 @@ int main(int argc, char *argv[]) {
   AddElemsAndRenumber(submeshesowned);
   auto t6 = std::chrono::high_resolution_clock::now();
 
-  /* boundaryConditionsCute(submeshesowned, entreefile); */
-  /* boundaryConditionsCute(submeshesowned, sortiefile); */
+  boundaryConditionsNodes(submeshesowned, basename);
 
   writeVTK(submeshesowned, esize, dim);
   /* writeCute(submeshesowned, esize, dim); */
