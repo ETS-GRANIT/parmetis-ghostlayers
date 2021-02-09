@@ -304,7 +304,7 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
   if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
   zone = 1;
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
-  assert(zoneType == Unstructured);
+  assert(zoneType == CGNS_ENUMV(Unstructured));
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
   gnnodes = sizes[0];
   gnelems = sizes[1];
@@ -329,15 +329,15 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
         &eBeg, &eEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
   switch (type)
   {
-    case TETRA_4:
+    case CGNS_ENUMV(TETRA_4):
       esize = 4;
       dim = 3;
       conn = new cgsize_t[nelems*esize]; break;
-    case TRI_3:
+    case CGNS_ENUMV(TRI_3):
       esize = 3;
       dim = 2;
       conn = new cgsize_t[nelems*esize]; break;
-    case QUAD_4:
+    case CGNS_ENUMV(QUAD_4):
       esize = 4;
       dim = 2;
       conn = new cgsize_t[nelems*esize]; break;
@@ -488,7 +488,7 @@ void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string f
   if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
   zone = 1;
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
-  assert(zoneType == Unstructured);
+  assert(zoneType == CGNS_ENUMV(Unstructured));
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
   gnnodes = sizes[0];
   gnelems = sizes[1];
@@ -927,7 +927,7 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
   if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
   zone = 1;
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
-  assert(zoneType == Unstructured);
+  assert(zoneType == CGNS_ENUMV(Unstructured));
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
   gnnodes = sizes[0];
   gnelems = sizes[1];
@@ -938,17 +938,17 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
 
   if(cg_coord_info(index_file, base, zone, 1, &dataType, zonename) != CG_OK) cg_get_error();
   x = new double[gnnodes];
-  if(cg_coord_read(index_file, base, zone, zonename, RealDouble,
+  if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
         &one, &gnnodes, x) != CG_OK) cg_get_error();
 
   if(cg_coord_info(index_file, base, zone, 2, &dataType, zonename) != CG_OK) cg_get_error();
   y = new double[gnnodes];
-  if(cg_coord_read(index_file, base, zone, zonename, RealDouble,
+  if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
         &one, &gnnodes, y) != CG_OK) cg_get_error();
 
   if(cg_coord_info(index_file, base, zone, 3, &dataType, zonename) != CG_OK) cg_get_error();
   z = new double[gnnodes];
-  if(cg_coord_read(index_file, base, zone, zonename, RealDouble,
+  if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
         &one, &gnnodes, z) != CG_OK) cg_get_error();
 
   for(idx_t k=0; k<submeshesowned.size(); k++){
