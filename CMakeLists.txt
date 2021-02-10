@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.9)
 set (CMAKE_CXX_STANDARD 11)
-set (CMAKE_CXX_FLAGS "-std=c++11 -O3")
+set (CMAKE_CXX_FLAGS "--std=c++11 -O3")
 
 project (parmetirs_ghost_v4 CXX)
 
@@ -8,18 +8,15 @@ find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 
 FIND_PATH(PARMETIS_INCLUDE_DIR parmetis.h
-  /usr/local/include
-  /usr/include
+  ${LIBRARY_PATH}
   )
 
 FIND_LIBRARY(PARMETIS_LIBRARY parmetis
-  /usr/local/lib
-  /usr/lib
+  ${LIBRARY_PATH}
   )
 
 FIND_LIBRARY(METIS_LIBRARY metis
-  /usr/local/lib
-  /usr/lib
+  ${LIBRARY_PATH}
   )
 
 IF(PARMETIS_INCLUDE_DIR)
@@ -32,7 +29,7 @@ ENDIF(PARMETIS_INCLUDE_DIR)
 file(GLOB SOURCES "*.cpp")
 add_executable(main ${SOURCES})
 
-target_link_libraries(main ${MPI_LIBRARIES} ${PARMETIS_LIBRARY} ${METIS_LIBRARY} cgns)
+target_link_libraries(main ${MPI_LIBRARIES} parmetis metis cgns)
 
 if(MPI_COMPILE_FLAGS)
   set_target_properties(main PROPERTIES

@@ -622,6 +622,8 @@ void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim,
   MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
   MPI_Comm_rank(MPI_COMM_WORLD,&me);
 
+  MPI_Comm comm(MPI_COMM_WORLD);
+
   int index_file, index_base, index_zone, n_bases, base, physDim, cellDim, nZones, zone, index_coord;
   int gnelems, nelems;
   int nSections;
@@ -635,65 +637,87 @@ void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim,
   CGNS_ENUMV(DataType_t) dataType;
   CGNS_ENUMV(ElementType_t) type;
   double *coord;
+  int Cx, Cy, Cz;
 
-  if (cgp_open("Mesh_Output.cgns",CG_MODE_WRITE,&index_file)) cg_error_exit();
+  /* if(cgp_mpi_comm(MPI_COMM_WORLD)) cgp_error_exit(); */
+  if(cgp_pio_mode(CGP_INDEPENDENT)) cgp_error_exit();
+  if(cgp_open("Mesh_Output.cgns",CG_MODE_WRITE,&index_file)) cgp_error_exit();
+
+
   int icelldim=2;
-  int iphysdim=2;
-  if(me==0){
-    const char *basename = "Base";
-    cg_base_write(index_file,basename,icelldim,iphysdim,&index_base);
+  int iphysdim=3;
+
+  if(cg_base_write(index_file,"Base",icelldim,iphysdim,&index_base) || cg_goto(index_file, index_base,"end")) cg_error_exit();
+
+
+  std::map<idx_t, idx_t> submeshlocid;
+  for(idx_t i=0;i<submeshesowned.size();i++){
+    submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i));
   }
 
+  std::vector<std::string> zms(ownerofsubmesh.size());
+  for(int k=0; k<ownerofsubmesh.size(); k++){
+      std::stringstream zss;
+      zss << "River_" << k;
+      zms[k] = zss.str();
+  }
 
-  /* if (cg_open("Mesh_Output.cgns",CG_MODE_WRITE,&index_file)) cg_error_exit(); */
-  /* int icelldim=2; */
-  /* int iphysdim=2; */
-  /* if(me==0){ */
-  /*   cg_base_write(index_file,basename,icelldim,iphysdim,&index_base); */
-  /* } */
-  /* MPI_Barrier(MPI_COMM_WORLD); */
-  /* index_base = 1; */
-  /* std::cout << basename << " " << index_file << " " <<  index_base << " " << me << std::endl; */
-  /* std::map<idx_t, idx_t> submeshlocid; */
-  /* for(idx_t i=0;i<submeshesowned.size();i++){ */
-  /*   submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i)); */
-  /* } */
+  int ns[ownerofsubmesh.size()];
+  int ne[ownerofsubmesh.size()];
+  for(int k=0; k<ownerofsubmesh.size(); k++){
+    if(ownerofsubmesh[k] == me){
+      ns[k] = submeshesowned[submeshlocid[k]].nodes.size();
+      ne[k] = submeshesowned[submeshlocid[k]].elems.size();
+    }
+    else{
+      ns[k] = 0;
+      ne[k] = 0;
+    }
+  }
 
-  /* for(int k=0; k<ownerofsubmesh.size(); k++){ */
-  /*   if(ownerofsubmesh[k]==me){ */
-  /*     std::stringstream zss; */
-  /*     zss << "River_" << submeshesowned[submeshlocid[k]].submeshid; */
-  /*     std::cout << zss.str() << std::endl; */
-  /*     zonename = zss.str().c_str(); */
-  /*     cgsize_t isize[1][3]; */
-  /*     isize[0][0]=submeshesowned[submeshlocid[k]].nodes.size(); */
-  /*     isize[0][1]=submeshesowned[submeshlocid[k]].elems.size(); */
-  /*     isize[0][2]=0; */
-  /*     cg_zone_write(index_file,index_base,zonename,*isize,Unstructured,&index_zone); */
-  /*   } */
-  /*   MPI_Barrier(MPI_COMM_WORLD); */
-  /* } */
+  MPI_Allreduce(MPI_IN_PLACE, ns, ownerofsubmesh.size(), MPI_INT, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, ne, ownerofsubmesh.size(), MPI_INT, MPI_SUM, comm);
 
-  /* for(int k=0; k<submeshesowned.size(); k++){ */
-  /*   index_zone = submeshesowned[k].submeshid; */
+  int cgzones[ownerofsubmesh.size()][4];
+  
+  cgsize_t isize[1][3];
+  for(int k=0; k<ownerofsubmesh.size(); k++){
+      isize[0][0]=ns[k];
+      isize[0][1]=ne[k];
+      isize[0][2]=0;
+      if(cg_zone_write(index_file,index_base,zms[k].c_str(),*isize,CGNS_ENUMV(Unstructured),&cgzones[k][0]) ) cg_error_exit();
+      if(cgp_coord_write(index_file,index_base,cgzones[k][0],CGNS_ENUMV(RealDouble),"CoordinateX",&cgzones[k][1])) cgp_error_exit();
+     
+  }
+  for(int k=0; k<ownerofsubmesh.size(); k++){
+    if(ownerofsubmesh[k] == me){
+      int kk = submeshlocid[k];
+      /* if(cgp_coord_write(index_file,index_base,cgzones[kk][0],CGNS_ENUMV(RealDouble),"CoordinateX",&Cx)) cgp_error_exit(); */
+      /* cgp_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble),"CoordinateY",&Cy); */
+      /* cgp_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble),"CoordinateZ",&Cz); */
 
-  /*   coord = new double[submeshesowned[k].nodes.size()]; */
-  /*   for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
-  /*     coord[i] = submeshesowned[k].nodes[i][0]; */
-  /*   } */
-  /*   cg_coord_write(index_file,index_base,index_zone,RealDouble,"CoordinateX",coord,&index_coord); */
-  /*   for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
-  /*     coord[i] = submeshesowned[k].nodes[i][1]; */
-  /*   } */
-  /*   cg_coord_write(index_file,index_base,index_zone,RealDouble,"CoordinateY",coord,&index_coord); */
-  /*   for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
-  /*     coord[i] = submeshesowned[k].nodes[i][2]; */
-  /*   } */
-  /*   cg_coord_write(index_file,index_base,index_zone,RealDouble,"CoordinateZ",coord,&index_coord); */
+      cgsize_t nnodes=submeshesowned[kk].nodes.size();
+      cgsize_t estart=1, eend=nnodes;
+      coord = new double[nnodes];
+      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
+        coord[i] = submeshesowned[kk].nodes[i][0];
+      }
+      if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][1],&estart,&eend,coord)) cgp_error_exit();
 
-  /*   delete [] coord; */
-  /* } */
+      /* for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
+      /*   coord[i] = submeshesowned[k].nodes[i][1]; */
+      /* } */
+      /* cgp_coord_write_data(index_file,index_base,index_zone,Cy,&estart,&eend,coord); */
 
+      /* for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
+      /*   coord[i] = submeshesowned[k].nodes[i][2]; */
+      /* } */
+      /* cgp_coord_write_data(index_file,index_base,index_zone,Cz,&estart,&eend,coord); */
+      delete [] coord;
+    }
+  }
+
+  if(cgp_close(index_file)) cgp_error_exit();
 }
 
 void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
