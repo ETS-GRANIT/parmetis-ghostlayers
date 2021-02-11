@@ -506,7 +506,7 @@ void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string f
     bcnodes = new cgsize_t[nBCNodes];
     if(cg_boco_read(index_file, base, zone, boco, bcnodes,
           NULL) != CG_OK) cg_get_error();
-   
+
     for(cgsize_t i=0; i<nBCNodes; i++){
       for(int k=0; k<submeshesowned.size(); k++){
         if(submeshesowned[k].nodes_gtl.count(bcnodes[i]) != 0){
@@ -514,7 +514,7 @@ void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string f
         }
       }
     }
-      
+
     delete [] bcnodes;
   }
 }
@@ -535,7 +535,7 @@ void boundaryConditionsCute(std::vector<submesh> &submeshesowned, std::string fi
     name << submeshesowned[k].submeshid << "_" << file;
     outputfiles[k].open(name.str());
   }
-  
+
   inputfile.open(file);
   inputfile >> nnodesin;
   for(idx_t i=0; i<nnodesin; i++){
@@ -549,7 +549,7 @@ void boundaryConditionsCute(std::vector<submesh> &submeshesowned, std::string fi
   inputfile.close();
 
   for(idx_t k=0; k<submeshesowned.size(); k++){
-      outputfiles[k] << nnodesout[k] << std::endl;
+    outputfiles[k] << nnodesout[k] << std::endl;
   }
 
   inputfile.open(file);
@@ -635,8 +635,9 @@ void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim,
   cgsize_t sizes[2];
   CGNS_ENUMV(ZoneType_t) zoneType;
   CGNS_ENUMV(DataType_t) dataType;
-  CGNS_ENUMV(ElementType_t) type;
+  CGNS_ENUMV(ElementType_t) elementType;
   double *coord;
+  cgsize_t *elems, *elemstosend;
   int Cx, Cy, Cz;
 
   /* if(cgp_mpi_comm(MPI_COMM_WORLD)) cgp_error_exit(); */
@@ -644,8 +645,23 @@ void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim,
   if(cgp_open("Mesh_Output.cgns",CG_MODE_WRITE,&index_file)) cgp_error_exit();
 
 
-  int icelldim=2;
-  int iphysdim=3;
+  int icelldim;
+  int iphysdim;
+  if(dim == 2 and esize==3){
+    icelldim = 2;
+    iphysdim = 3;
+    elementType = CGNS_ENUMV(TRI_3);
+  }
+  else if(dim==2 and esize==4){
+    icelldim = 2;
+    iphysdim = 3;
+    elementType = CGNS_ENUMV(QUAD_4);
+  }
+  else if(dim==3 and esize==4){
+    icelldim = 3;
+    iphysdim = 3;
+    elementType = CGNS_ENUMV(TETRA_4);
+  }
 
   if(cg_base_write(index_file,"Base",icelldim,iphysdim,&index_base) || cg_goto(index_file, index_base,"end")) cg_error_exit();
 
@@ -656,10 +672,11 @@ void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim,
   }
 
   std::vector<std::string> zms(ownerofsubmesh.size());
+  std::vector<std::string> ems(ownerofsubmesh.size());
   for(int k=0; k<ownerofsubmesh.size(); k++){
-      std::stringstream zss;
-      zss << "River_" << k;
-      zms[k] = zss.str();
+    std::stringstream zss;
+    zss << "River_" << k;
+    zms[k] = zss.str();
   }
 
   int ns[ownerofsubmesh.size()];
@@ -678,45 +695,105 @@ void writeMeshCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim,
   MPI_Allreduce(MPI_IN_PLACE, ns, ownerofsubmesh.size(), MPI_INT, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, ne, ownerofsubmesh.size(), MPI_INT, MPI_SUM, comm);
 
-  int cgzones[ownerofsubmesh.size()][4];
-  
+  cgsize_t nsendtot[ownerofsubmesh.size()];
+  for(int k=0; k<ownerofsubmesh.size(); k++){
+    if(ownerofsubmesh[k]==me){
+      int kk=submeshlocid[k];
+      std::map<idx_t, std::set<idx_t> >:: iterator it;
+      nsendtot[k] = 0;
+      for(it=submeshesowned[kk].elemstosend.begin(); it!=submeshesowned[kk].elemstosend.end(); it++){
+        nsendtot[k] += it->second.size();
+      }
+    }
+    else{
+      nsendtot[k] = 0; 
+    }
+  }
+  MPI_Allreduce(MPI_IN_PLACE, nsendtot, ownerofsubmesh.size(), MPI_INT, MPI_SUM, comm);
+
+  int cgzones[ownerofsubmesh.size()][5];
+  int index_array[ownerofsubmesh.size()];
+
+  cgsize_t estart, eend;
   cgsize_t isize[1][3];
   for(int k=0; k<ownerofsubmesh.size(); k++){
-      isize[0][0]=ns[k];
-      isize[0][1]=ne[k];
-      isize[0][2]=0;
-      if(cg_zone_write(index_file,index_base,zms[k].c_str(),*isize,CGNS_ENUMV(Unstructured),&cgzones[k][0]) ) cg_error_exit();
-      if(cgp_coord_write(index_file,index_base,cgzones[k][0],CGNS_ENUMV(RealDouble),"CoordinateX",&cgzones[k][1])) cgp_error_exit();
-     
+    isize[0][0]=ns[k];
+    isize[0][1]=ne[k];
+    isize[0][2]=0;
+    if(cg_zone_write(index_file,index_base,zms[k].c_str(),*isize,CGNS_ENUMV(Unstructured),&cgzones[k][0]) ) cg_error_exit();
+    if(cgp_coord_write(index_file,index_base,cgzones[k][0],CGNS_ENUMV(RealDouble),"CoordinateX",&cgzones[k][1])) cgp_error_exit();
+    if(cgp_coord_write(index_file,index_base,cgzones[k][0],CGNS_ENUMV(RealDouble),"CoordinateY",&cgzones[k][2])) cgp_error_exit();
+    if(cgp_coord_write(index_file,index_base,cgzones[k][0],CGNS_ENUMV(RealDouble),"CoordinateZ",&cgzones[k][3])) cgp_error_exit();
+    estart = 1;
+    eend = ne[k];
+    if (cgp_section_write(index_file, index_base, cgzones[k][0], "Elements", elementType, estart, eend, 0, &cgzones[k][4])) cgp_error_exit();
+
+    if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+    std::string name="ElemsToSend";
+    if(cg_user_data_write(name.c_str())) cg_error_exit();
+    if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "ElemsToSend", 0, "end")) cg_error_exit();
+    if(cg_gridlocation_write(CGNS_ENUMV(CellCenter))) cg_error_exit();
   }
   for(int k=0; k<ownerofsubmesh.size(); k++){
     if(ownerofsubmesh[k] == me){
       int kk = submeshlocid[k];
-      /* if(cgp_coord_write(index_file,index_base,cgzones[kk][0],CGNS_ENUMV(RealDouble),"CoordinateX",&Cx)) cgp_error_exit(); */
-      /* cgp_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble),"CoordinateY",&Cy); */
-      /* cgp_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble),"CoordinateZ",&Cz); */
 
       cgsize_t nnodes=submeshesowned[kk].nodes.size();
-      cgsize_t estart=1, eend=nnodes;
+      estart=1; eend=nnodes;
       coord = new double[nnodes];
       for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
         coord[i] = submeshesowned[kk].nodes[i][0];
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][1],&estart,&eend,coord)) cgp_error_exit();
 
-      /* for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
-      /*   coord[i] = submeshesowned[k].nodes[i][1]; */
-      /* } */
-      /* cgp_coord_write_data(index_file,index_base,index_zone,Cy,&estart,&eend,coord); */
+      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
+        coord[i] = submeshesowned[kk].nodes[i][1];
+      }
+      if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][2],&estart,&eend,coord)) cgp_error_exit();
 
-      /* for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){ */
-      /*   coord[i] = submeshesowned[k].nodes[i][2]; */
-      /* } */
-      /* cgp_coord_write_data(index_file,index_base,index_zone,Cz,&estart,&eend,coord); */
+      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
+        coord[i] = submeshesowned[kk].nodes[i][2];
+      }
+      if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][3],&estart,&eend,coord)) cgp_error_exit();
+
       delete [] coord;
+      cgsize_t nelems=submeshesowned[kk].elems.size();
+      estart=1;eend=ne[k];
+      elems = new cgsize_t[esize*nelems];
+      for(idx_t i=0; i<submeshesowned[kk].elems.size(); i++){
+        for(idx_t j=0; j<esize; j++){
+          elems[esize*i + j] = submeshesowned[kk].erenumberr[submeshesowned[kk].nodes_gtl[submeshesowned[kk].elems[i][j]]]+1;
+        }
+      }
+      if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();
+      delete [] elems;
+
+      std::map<idx_t, std::set<idx_t> >:: iterator it;
+      elemstosend = new cgsize_t[nsendtot[k]];
+      cgsize_t i=0;
+      for(it=submeshesowned[kk].elemstosend.begin(); it!=submeshesowned[kk].elemstosend.end(); it++){
+        std::set<idx_t>::iterator iter;
+        for(iter=it->second.begin(); iter!=it->second.end(); iter++){
+          elemstosend[i] = submeshesowned[kk].erenumberr[*iter+1];
+          i++;
+        }
+      }
+      MPI_Bcast(elemstosend, nsendtot[k], MPI_INT, me, MPI_COMM_WORLD);
+      estart=1;eend=nsendtot[k];
+      if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "ElemsToSend", 0, "end")) cg_error_exit();
+      if(cg_ptset_write(CGNS_ENUMV(PointList), nsendtot[k], elemstosend)) cg_error_exit();
     }
+    else{
+      if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "ElemsToSend", 0, "end")) cg_error_exit();
+      elemstosend = new cgsize_t[nsendtot[k]];
+      MPI_Bcast(elemstosend, nsendtot[k], MPI_INT, ownerofsubmesh[k], MPI_COMM_WORLD);
+      if(cg_ptset_write(CGNS_ENUMV(PointList), nsendtot[k], elemstosend)) cg_error_exit();
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    delete [] elemstosend;
   }
 
+  MPI_Barrier(MPI_COMM_WORLD);
   if(cgp_close(index_file)) cgp_error_exit();
 }
 
@@ -771,7 +848,7 @@ void writesendrecvCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t 
     std::map<idx_t, idx_t> trueneighborssend;
     std::map<idx_t, idx_t> trueneighborsrecv;
     for(std::set<idx_t>::iterator it=submeshesowned[k].potentialneighbors.begin();
-      it!=submeshesowned[k].potentialneighbors.end();it++){
+        it!=submeshesowned[k].potentialneighbors.end();it++){
       if(submeshesowned[k].elemstorecv[*it].size() > 0){
         trueneighborssend.insert(std::make_pair(*it,submeshesowned[k].elemstorecv[*it].size()));
         trueneighborsrecv.insert(std::make_pair(*it,submeshesowned[k].elemstosend[*it].size()));
@@ -784,7 +861,7 @@ void writesendrecvCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t 
     outFile << std::setprecision(16);
     outFile << trueneighborssend.size() << std::endl;
     for(std::map<idx_t,idx_t>::iterator it=trueneighborssend.begin();
-      it!=trueneighborssend.end();it++){
+        it!=trueneighborssend.end();it++){
       outFile << it->first << " " << it->second << std::endl;
     }
 
@@ -1565,7 +1642,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>::iterator it_faces;
 
-      for(it_faces=pn_faces.begin();it_faces!=pn_faces.end();it_faces++){
+        for(it_faces=pn_faces.begin();it_faces!=pn_faces.end();it_faces++){
           if(submeshesowned[k].boundary_faces.find(it_faces->first)!=submeshesowned[k].boundary_faces.end()){
 
             //Add elem to recv
