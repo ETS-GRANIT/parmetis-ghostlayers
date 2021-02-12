@@ -93,7 +93,8 @@ int main(int argc, char *argv[]) {
 
   boundaryConditionsNodes(submeshesowned, basename);
 
-  writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh);
+  /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
+  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh);
   /* writeVTK(submeshesowned, esize, dim); */
   /* writeCute(submeshesowned, esize, dim); */
   /* writesendrecvCute(submeshesowned, esize, dim); */

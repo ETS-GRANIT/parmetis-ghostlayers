@@ -27,6 +27,7 @@ IF(PARMETIS_INCLUDE_DIR)
 ENDIF(PARMETIS_INCLUDE_DIR)
 
 file(GLOB SOURCES "*.cpp")
+file(GLOB HEADERS "*.hpp")
 add_executable(main ${SOURCES})
 
 target_link_libraries(main ${MPI_LIBRARIES} parmetis metis cgns)
