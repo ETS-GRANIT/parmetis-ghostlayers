@@ -6,6 +6,7 @@ project (parmetirs_ghost_v4 CXX)
 
 find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
+include_directories(.)
 
 FIND_PATH(PARMETIS_INCLUDE_DIR parmetis.h
   ${LIBRARY_PATH}
@@ -26,9 +27,7 @@ IF(PARMETIS_INCLUDE_DIR)
   ENDIF(PARMETIS_LIBRARY)
 ENDIF(PARMETIS_INCLUDE_DIR)
 
-file(GLOB SOURCES "*.cpp")
-file(GLOB HEADERS "*.hpp")
-add_executable(main ${SOURCES})
+add_executable(main module_parmetis.hpp main.cpp)
 
 target_link_libraries(main ${MPI_LIBRARIES} parmetis metis cgns)
 
