@@ -92,6 +92,7 @@ int main(int argc, char *argv[]) {
   auto t6 = std::chrono::high_resolution_clock::now();
 
   boundaryConditionsNodes(submeshesowned, basename);
+  readArrays(submeshesowned, basename, comm);
 
   /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
   writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh);
