@@ -694,7 +694,7 @@ void writeMeshCGNS1(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
   index_base=1;
   for(int k=0; k<submeshesowned.size(); k++){
     std::stringstream fname;
-    fname << submeshesowned[k].submeshid << "_Mesh_Output.cgns" << std::endl;
+    fname << submeshesowned[k].submeshid << "_Mesh_Output.cgns";
     if(cg_open(fname.str().c_str(),CG_MODE_WRITE,&index_file)) cg_error_exit();
     if(cg_base_write(index_file,"Base",icelldim,iphysdim,&index_base)) cg_error_exit();
     /* cgsize_t estart, eend; */
