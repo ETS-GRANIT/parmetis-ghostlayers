@@ -51,7 +51,9 @@ int main(int argc, char *argv[]) {
 
   //Read the element mesh file and construct all the vectors needed by parmetis
   /* ParallelReadMesh(elmdist, eptr, eind, part, esize, dim, numberingstart, elemsfile, comm); */
+  auto tio01 = std::chrono::high_resolution_clock::now();
   ParallelReadMeshCGNS(elmdist, eptr, eind, part, esize, dim, numberingstart, basename, comm);
+  auto tio02 = std::chrono::high_resolution_clock::now();
 
   assert(dim==2 or dim==3);
   if(dim==2){
@@ -64,6 +66,8 @@ int main(int argc, char *argv[]) {
   auto t1 = std::chrono::high_resolution_clock::now();
   ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, &options, &edgecut, part, &comm);
   auto t2 = std::chrono::high_resolution_clock::now();
+
+  MPI_Barrier(comm);
 
   idx_t nsubmeshesowned;
   std::vector<submesh> submeshesowned;
@@ -80,7 +84,10 @@ int main(int argc, char *argv[]) {
   if(eind) delete [] eind;
   if(part) delete [] part;
 
+  auto tio1 = std::chrono::high_resolution_clock::now();
   updateNodesCGNS(submeshesowned, basename, comm);
+  auto tio2 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
   auto t5 = std::chrono::high_resolution_clock::now();
   Buildconnectivity(submeshesowned, dim);
@@ -90,12 +97,20 @@ int main(int argc, char *argv[]) {
   FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers);
   AddElemsAndRenumber(submeshesowned);
   auto t6 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
+  auto tio3 = std::chrono::high_resolution_clock::now();
   boundaryConditionsNodes(submeshesowned, basename);
   readArrays(submeshesowned, basename, comm);
+  auto tio4 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
+
+  auto tio5 = std::chrono::high_resolution_clock::now();
+  /* writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh); */
+  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh);
+  auto tio6 = std::chrono::high_resolution_clock::now();
 
   /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
-  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh);
   /* writeVTK(submeshesowned, esize, dim); */
   /* writeCute(submeshesowned, esize, dim); */
   /* writesendrecvCute(submeshesowned, esize, dim); */
@@ -106,7 +121,11 @@ int main(int argc, char *argv[]) {
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
   auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
   auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
-  std::cout << me << " "  << duration1/1.0e6 << " " << duration2/1.0e6 << " " << duration3/1.0e6 << "\n";
+  auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(tio2-tio1).count();
+  auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(tio4-tio3).count();
+  auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(tio6-tio5).count();
+  auto duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count();
+  std::cout << std::setfill(' ') << std::setw(5) << me << "   ParMetis : "  << duration1/1.0e6 << "   GhostLayers : " << (duration2+duration3)/1.0e6 << "   FS Read : " << (duration04+duration4+duration5)/1.0e6 << "   FS Write : " << duration6/1.0e6 << "\n";
 
   MPI_Finalize();
 }
