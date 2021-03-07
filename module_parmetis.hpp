@@ -1099,6 +1099,54 @@ void readArrays(std::vector<submesh> &submeshesowned, std::string filename, MPI_
   if (cg_close(index_file)) cg_error_exit();
 }
 
+void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    idx_t indrenum;
+    idx_t nNodes = submeshesowned[k].nnodes;
+    idx_t nElems = submeshesowned[k].nelems;
+    std::stringstream prefixedOutputFilename;
+    prefixedOutputFilename << submeshesowned[k].submeshid << "_output_paraview.vtk";
+    std::ofstream outFile(prefixedOutputFilename.str());
+    outFile << std::setprecision(16);
+    outFile << "# vtk DataFile Version 1.0" << std::endl;
+    outFile << "Genrated from ParMetis Ghost" << std::endl;
+    outFile << "ASCII" << std::endl << std::endl;
+    outFile << "DATASET UNSTRUCTURED_GRID" << std::endl;
+    outFile << "POINTS " << nNodes << " float" << std::endl;
+    for(idx_t i=0; i<nNodes; i++){
+      outFile << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+    }
+
+    idx_t totelemsrecv=0;
+    for(std::map<idx_t, std::set<idx_t> >::iterator it=submeshesowned[k].elemstorecv.begin(); it!= submeshesowned[k].elemstorecv.end(); it++){
+      totelemsrecv += it->second.size();     
+    }
+
+    outFile << std::endl;
+    outFile << "CELLS " << nElems-totelemsrecv << " " << (nElems-totelemsrecv)*(esize+1) << std::endl;
+    for(idx_t i=0; i<nElems; i++){
+      /* indrenum = i; */
+      indrenum = submeshesowned[k].erenumberr[i];
+      if(indrenum<nElems-totelemsrecv){
+      outFile << esize << " ";
+      for(idx_t p=0; p<esize; p++){
+        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[indrenum][p]] << " ";
+      }
+      outFile << std::endl;
+      }
+    }
+
+    outFile << std::endl;
+    outFile << "CELL_TYPES " << nElems << std::endl;
+    idx_t cellType;
+    if(dim==3) cellType=10; //tetrahedrons
+    if(dim==2 and esize==3) cellType=5; //triangles
+    if(dim==2 and esize==4) cellType=9; //quadrangles
+    for(idx_t i=0; i<nElems; i++){
+      outFile << cellType << std::endl;
+    }
+  }
+}
 
 void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
@@ -1426,29 +1474,16 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
   gnelems = sizes[1];
 
   if(cg_ncoords(index_file, base, zone, &nCoords) != CG_OK) cg_get_error();
-  cgsize_t one = 1;
   double *x, *y, *z;
 
-  if(cg_coord_info(index_file, base, zone, 1, &dataType, zonename) != CG_OK) cg_get_error();
-  x = new double[gnnodes];
-  if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
-        &one, &gnnodes, x) != CG_OK) cg_get_error();
 
-  if(cg_coord_info(index_file, base, zone, 2, &dataType, zonename) != CG_OK) cg_get_error();
-  y = new double[gnnodes];
-  if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
-        &one, &gnnodes, y) != CG_OK) cg_get_error();
-
-  if(cg_coord_info(index_file, base, zone, 3, &dataType, zonename) != CG_OK) cg_get_error();
-  z = new double[gnnodes];
-  if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
-        &one, &gnnodes, z) != CG_OK) cg_get_error();
-
+  //Resize each subdomain nodes vector
   for(idx_t k=0; k<submeshesowned.size(); k++){
     submeshesowned[k].nnodes = submeshesowned[k].nodesindex.size();
     submeshesowned[k].nodes.resize(submeshesowned[k].nnodes, std::vector<real_t>(3, 0.));
   }
 
+  //Construct a global_nodes vector so that we only check once if we own a node
   std::map<idx_t, std::set<idx_t>> global_nodes;
   for(idx_t k=0; k<submeshesowned.size(); k++){
     for(std::unordered_set<idx_t>::iterator it=submeshesowned[k].nodesindex.begin();
@@ -1457,25 +1492,56 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
     }
   }
 
-
+  //Read nodes in batches
   std::vector<idx_t> nloc(submeshesowned.size(), 0);
-  real_t sx, sy, sz;
-  for(idx_t i=0; i<gnnodes; i++){
-    if(global_nodes.count(i)!=0){
-      for(std::set<idx_t>::iterator it=global_nodes[i].begin();
-          it!=global_nodes[i].end(); it++){
-        /* for(idx_t k=0; k<submeshesowned.size(); k++){ */
-        /*   if(submeshesowned[k].nodesindex.find(i)!=submeshesowned[k].nodesindex.end()){ */
-        int k=*it;
-        submeshesowned[k].nodes[nloc[k]][0] = x[i];
-        submeshesowned[k].nodes[nloc[k]][1] = y[i];
-        submeshesowned[k].nodes[nloc[k]][2] = z[i];
-        submeshesowned[k].nodes_ltg.insert({nloc[k], i});
-        submeshesowned[k].nodes_gtl.insert({i, nloc[k]});
-        nloc[k] += 1;
-        /* } */
-        /* } */
+  //int nbatches=1;
+  int nbatches=nprocs;
+  cgsize_t maxnnodesbatch = gnnodes - ((nbatches-1)*gnnodes/nbatches + 1) + 1;
+  /* std::cout << me << " " << gnnodes << " " << maxnnodesbatch << std::endl; */
+  x = new double[maxnnodesbatch];
+  y = new double[maxnnodesbatch];
+  z = new double[maxnnodesbatch];
+  for(int b=0; b<nbatches; b++){
+    cgsize_t firstnode = (int) (b*gnnodes/nbatches + 1);
+    cgsize_t lastnode = (int) ((b+1)*gnnodes/nbatches);
+    if(b==(nbatches-1)){//last batch
+      lastnode = gnnodes;
+    }
+    cgsize_t nnodesbatch = (lastnode-firstnode+1);
+    /* std::cout << me << " " << b << " " << firstnode << " " << lastnode << std::endl; */
+
+    if(cg_coord_info(index_file, base, zone, 1, &dataType, zonename) != CG_OK) cg_get_error();
+    /* x = new double[gnnodes]; */
+    if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
+          &firstnode, &lastnode, x) != CG_OK) cg_get_error();
+
+    if(cg_coord_info(index_file, base, zone, 2, &dataType, zonename) != CG_OK) cg_get_error();
+    /* y = new double[gnnodes]; */
+    if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
+          &firstnode, &lastnode, y) != CG_OK) cg_get_error();
+
+    if(cg_coord_info(index_file, base, zone, 3, &dataType, zonename) != CG_OK) cg_get_error();
+    /* z = new double[gnnodes]; */
+    if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
+          &firstnode, &lastnode, z) != CG_OK) cg_get_error();
+
+    real_t sx, sy, sz;
+    /* for(idx_t i=0; i<gnnodes; i++){ */
+    int j=0;
+    for(idx_t i=firstnode-1; i<lastnode; i++){
+      if(global_nodes.count(i)!=0){
+        for(std::set<idx_t>::iterator it=global_nodes[i].begin();
+            it!=global_nodes[i].end(); it++){
+          int k=*it;
+          submeshesowned[k].nodes[nloc[k]][0] = x[j];
+          submeshesowned[k].nodes[nloc[k]][1] = y[j];
+          submeshesowned[k].nodes[nloc[k]][2] = z[j];
+          submeshesowned[k].nodes_ltg.insert({nloc[k], i});
+          submeshesowned[k].nodes_gtl.insert({i, nloc[k]});
+          nloc[k] += 1;
+        }
       }
+      j++;
     }
   }
   if (cg_close(index_file)) cg_error_exit();

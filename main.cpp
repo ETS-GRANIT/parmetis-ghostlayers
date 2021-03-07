@@ -7,7 +7,6 @@
 #include <unistd.h> 
 #include <sstream>
 
-
 #include "module_parmetis.hpp"
 
 #if CGNSVERSION < 3100
@@ -74,17 +73,17 @@ int main(int argc, char *argv[]) {
   std::vector<submesh> submeshesowned;
   std::vector<idx_t> ownerofsubmesh;
 
-  if(eptr) delete [] eptr;
+  delete [] eptr;
 
   auto t3 = std::chrono::high_resolution_clock::now();
   Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
   Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
   auto t4 = std::chrono::high_resolution_clock::now();
 
-  MPI_Barrier(comm);
-  if(eind) delete [] eind;
-  if(part) delete [] part;
+  delete [] eind;
+  delete [] part;
 
+  MPI_Barrier(comm);
   auto tio1 = std::chrono::high_resolution_clock::now();
   updateNodesCGNS(submeshesowned, basename, comm);
   auto tio2 = std::chrono::high_resolution_clock::now();
@@ -107,16 +106,18 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(comm);
 
   auto tio5 = std::chrono::high_resolution_clock::now();
-  /* writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh); */
-  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh);
+  /* writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh);//multiple files */
+
+  /* writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file */
   auto tio6 = std::chrono::high_resolution_clock::now();
 
   /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
-  /* writeVTK(submeshesowned, esize, dim); */
+  writeVTK(submeshesowned, esize, dim);
+  /* writeworecvVTK(submeshesowned, esize, dim); */
   /* writeCute(submeshesowned, esize, dim); */
   /* writesendrecvCute(submeshesowned, esize, dim); */
-  /* writesendVTK(submeshesowned, esize, dim); */
-  /* writerecvVTK(submeshesowned, esize, dim); */
+  writesendVTK(submeshesowned, esize, dim);
+  writerecvVTK(submeshesowned, esize, dim);
   /* writeneighbors(submeshesowned, esize); */
 
   auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
