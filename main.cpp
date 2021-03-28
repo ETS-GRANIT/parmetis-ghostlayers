@@ -105,29 +105,53 @@ int main(int argc, char *argv[]) {
   auto tio4 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
-  auto tio5 = std::chrono::high_resolution_clock::now();
-  /* writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh);//multiple files */
+  auto tio7 = std::chrono::high_resolution_clock::now();
+  writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh);//multiple files
+  auto tio8 = std::chrono::high_resolution_clock::now();
 
-  /* writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file */
+  auto tio5 = std::chrono::high_resolution_clock::now();
+  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file
   auto tio6 = std::chrono::high_resolution_clock::now();
 
   /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
-  writeVTK(submeshesowned, esize, dim);
+
+  /* writeVTK(submeshesowned, esize, dim); */ //lastr
+
   /* writeworecvVTK(submeshesowned, esize, dim); */
   /* writeCute(submeshesowned, esize, dim); */
   /* writesendrecvCute(submeshesowned, esize, dim); */
-  writesendVTK(submeshesowned, esize, dim);
-  writerecvVTK(submeshesowned, esize, dim);
+
+  /* writesendVTK(submeshesowned, esize, dim); */ //last
+  /* writerecvVTK(submeshesowned, esize, dim); */ //last
+
   /* writeneighbors(submeshesowned, esize); */
 
-  auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
-  auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
-  auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count();
-  auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(tio2-tio1).count();
-  auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(tio4-tio3).count();
-  auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(tio6-tio5).count();
-  auto duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count();
-  std::cout << std::setfill(' ') << std::setw(5) << me << "   ParMetis : "  << duration1/1.0e6 << "   GhostLayers : " << (duration2+duration3)/1.0e6 << "   FS Read : " << (duration04+duration4+duration5)/1.0e6 << "   FS Write : " << duration6/1.0e6 << "\n";
+  double duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count()/1.0e6;
+  double duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count()/1.0e6;
+  double duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count()/1.0e6;
+  double duration4 = std::chrono::duration_cast<std::chrono::microseconds>(tio2-tio1).count()/1.0e6;
+  double duration5 = std::chrono::duration_cast<std::chrono::microseconds>(tio4-tio3).count()/1.0e6;
+  double duration6 = std::chrono::duration_cast<std::chrono::microseconds>(tio6-tio5).count()/1.0e6;
+  double duration7 = std::chrono::duration_cast<std::chrono::microseconds>(tio8-tio7).count()/1.0e6;
+  double duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count()/1.0e6;
+  std::cout << std::setfill(' ') << std::setw(5) << me << "   ParMetis : "  << duration1 << "   GhostLayers : " << (duration2+duration3) << "   FS Read : " << (duration04+duration4+duration5) << "   FS Write single : " << duration6 << "    FS Write multiple : " << duration7 << "\n";
+
+  
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  MPI_Allreduce(MPI_IN_PLACE, &duration1, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration2, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration3, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration4, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration5, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration6, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration7, 1, MPI_DOUBLE, MPI_SUM, comm);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  if(me==0){
+    std::cout << std::setfill(' ') << std::setw(5) << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs << std::endl;
+  }
 
   MPI_Finalize();
 }

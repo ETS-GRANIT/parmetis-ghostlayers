@@ -313,7 +313,7 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
   base=1;
   if(cg_base_read(index_file, base, basename, &cellDim, &physDim) != CG_OK) cg_get_error();
   if(cg_nzones(index_file, base, &nZones) != CG_OK) cg_get_error();
-  zone = 1;
+  zone = 1; //Reading zone 1 only
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
   assert(zoneType == CGNS_ENUMV(Unstructured));
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
@@ -334,10 +334,10 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
   if(cg_nsections(index_file, base, zone, &nSections) != CG_OK) cg_get_error();
   int sec = 1;
   int nBdry;
-  cgsize_t eBeg, eEnd, *conn;
+  cgsize_t TeBeg, TeEnd, *conn;
   int parentFlag;
   if(cg_section_read(index_file, base, zone, sec, secname, &type,
-        &eBeg, &eEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
   switch (type)
   {
     case CGNS_ENUMV(TETRA_4):
@@ -358,8 +358,8 @@ void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& p
 
 
   // Conectivity starts numbering at 1 !!!
-  eBeg=elmdist[me]+1;
-  eEnd=elmdist[me+1];
+  cgsize_t eBeg=elmdist[me]+TeBeg;
+  cgsize_t eEnd=elmdist[me+1]+TeBeg-1;
   if(cg_elements_partial_read(index_file, base, zone, sec, eBeg, eEnd, conn, NULL) != CG_OK) cg_get_error();
   eind = new idx_t[esize*nelems];
   part = new idx_t[nelems];
