@@ -8,26 +8,7 @@ find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 include_directories(.)
 
-FIND_PATH(PARMETIS_INCLUDE_DIR parmetis.h
-  ${LIBRARY_PATH}
-  )
-
-FIND_LIBRARY(PARMETIS_LIBRARY parmetis
-  ${LIBRARY_PATH}
-  )
-
-FIND_LIBRARY(METIS_LIBRARY metis
-  ${LIBRARY_PATH}
-  )
-
-IF(PARMETIS_INCLUDE_DIR)
-  IF(PARMETIS_LIBRARY)
-    SET( PARMETIS_LIBRARIES ${PARMETIS_LIBRARY} ${METIS_LIBRARY})
-    SET( PARMETIS_FOUND "YES" )
-  ENDIF(PARMETIS_LIBRARY)
-ENDIF(PARMETIS_INCLUDE_DIR)
-
-add_executable(main module_parmetis.hpp main.cpp)
+add_executable(main src/module_parmetis.hpp src/module_parmetis.cpp src/main.cpp)
 
 target_link_libraries(main ${MPI_LIBRARIES} parmetis metis cgns)
 

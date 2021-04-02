@@ -1,13 +1,13 @@
-#include "cgnslib.h"
 #include <iostream>
-#include <parmetis.h>
-#include <metis.h>
+#include <iomanip>
 #include <chrono>
 #include <assert.h>
-#include <unistd.h> 
-#include <sstream>
+
+#include <metis.h>
+#include <parmetis.h>
 
 #include "module_parmetis.hpp"
+
 
 #if CGNSVERSION < 3100
 # define cgsizet int
@@ -117,19 +117,6 @@ int main(int argc, char *argv[]) {
   writeMeshPCGNS(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
   auto tio10 = std::chrono::high_resolution_clock::now();
 
-  /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
-
-  /* writeVTK(submeshesowned, esize, dim); */ //lastr
-
-  /* writeworecvVTK(submeshesowned, esize, dim); */
-  /* writeCute(submeshesowned, esize, dim); */
-  /* writesendrecvCute(submeshesowned, esize, dim); */
-
-  /* writesendVTK(submeshesowned, esize, dim); */ //last
-  /* writerecvVTK(submeshesowned, esize, dim); */ //last
-
-  /* writeneighbors(submeshesowned, esize); */
-
   double duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count()/1.0e6;
   double duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count()/1.0e6;
   double duration3 = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5).count()/1.0e6;
@@ -139,8 +126,6 @@ int main(int argc, char *argv[]) {
   double duration7 = std::chrono::duration_cast<std::chrono::microseconds>(tio8-tio7).count()/1.0e6;
   double duration8 = std::chrono::duration_cast<std::chrono::microseconds>(tio10-tio9).count()/1.0e6;
   double duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count()/1.0e6;
-  /* std::cout << std::setfill(' ') << std::setw(5) << me << "   ParMetis : "  << duration1 << "   GhostLayers : " << (duration2+duration3) << "   FS Read : " << (duration04+duration4+duration5) << "   FS Write single : " << duration6 << "    FS Write multiple : " << duration7 << "\n"; */
-
   
   MPI_Barrier(MPI_COMM_WORLD);
 
