@@ -100,8 +100,8 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(comm);
 
   auto tio3 = std::chrono::high_resolution_clock::now();
-  boundaryConditionsNodes(submeshesowned, basename);
-  readArrays(submeshesowned, basename, comm);
+  /* boundaryConditionsNodes(submeshesowned, basename); */
+  /* readArrays(submeshesowned, basename, comm); */
   auto tio4 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
@@ -112,6 +112,10 @@ int main(int argc, char *argv[]) {
   auto tio5 = std::chrono::high_resolution_clock::now();
   writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file
   auto tio6 = std::chrono::high_resolution_clock::now();
+
+  auto tio9 = std::chrono::high_resolution_clock::now();
+  writeMeshPCGNS(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
+  auto tio10 = std::chrono::high_resolution_clock::now();
 
   /* writeMeshCGNS(submeshesowned, esize, dim, ownerofsubmesh); */
 
@@ -133,8 +137,9 @@ int main(int argc, char *argv[]) {
   double duration5 = std::chrono::duration_cast<std::chrono::microseconds>(tio4-tio3).count()/1.0e6;
   double duration6 = std::chrono::duration_cast<std::chrono::microseconds>(tio6-tio5).count()/1.0e6;
   double duration7 = std::chrono::duration_cast<std::chrono::microseconds>(tio8-tio7).count()/1.0e6;
+  double duration8 = std::chrono::duration_cast<std::chrono::microseconds>(tio10-tio9).count()/1.0e6;
   double duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count()/1.0e6;
-  std::cout << std::setfill(' ') << std::setw(5) << me << "   ParMetis : "  << duration1 << "   GhostLayers : " << (duration2+duration3) << "   FS Read : " << (duration04+duration4+duration5) << "   FS Write single : " << duration6 << "    FS Write multiple : " << duration7 << "\n";
+  /* std::cout << std::setfill(' ') << std::setw(5) << me << "   ParMetis : "  << duration1 << "   GhostLayers : " << (duration2+duration3) << "   FS Read : " << (duration04+duration4+duration5) << "   FS Write single : " << duration6 << "    FS Write multiple : " << duration7 << "\n"; */
 
   
   MPI_Barrier(MPI_COMM_WORLD);
@@ -146,11 +151,12 @@ int main(int argc, char *argv[]) {
   MPI_Allreduce(MPI_IN_PLACE, &duration5, 1, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, &duration6, 1, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, &duration7, 1, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &duration8, 1, MPI_DOUBLE, MPI_SUM, comm);
 
   MPI_Barrier(MPI_COMM_WORLD);
 
   if(me==0){
-    std::cout << std::setfill(' ') << std::setw(5) << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs << std::endl;
+    std::cout << std::setfill(' ') << std::setw(5) << nprocs << " " << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs <<  " "  << duration8/nprocs << std::endl;
   }
 
   MPI_Finalize();
