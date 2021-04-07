@@ -5,8 +5,11 @@
 #include <unordered_set>
 
 #include "mpi.h"
+
 #include <metis.h>
 #include <parmetis.h>
+
+#include "cgnslib.h"
 #include "pcgnslib.h"
 
 
@@ -147,6 +150,8 @@ void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshes
 
 void AddElemsAndRenumber(std::vector<submesh> &submeshesowned);
 
+void writeMeshPCGNS_wos(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
+void writeMeshPCGNS_ch(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
 void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
 
 #endif
