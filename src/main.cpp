@@ -115,13 +115,13 @@ int main(int argc, char *argv[]) {
   auto tio8 = std::chrono::high_resolution_clock::now();
 
   auto tio5 = std::chrono::high_resolution_clock::now();
-  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file
+  /* writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file */
   auto tio6 = std::chrono::high_resolution_clock::now();
 
   auto tio9 = std::chrono::high_resolution_clock::now();
-  writeMeshPCGNS_wos(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
+  /* writeMeshPCGNS_wos(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns */
 
-  /* writeMeshPCGNS_ch(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns */
+  writeMeshPCGNS_ch(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
   auto tio10 = std::chrono::high_resolution_clock::now();
 
   auto tio11 = std::chrono::high_resolution_clock::now();

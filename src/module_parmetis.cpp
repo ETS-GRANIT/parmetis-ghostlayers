@@ -1453,38 +1453,33 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
   std::vector<idx_t> nloc(submeshesowned.size(), 0);
   //int nbatches=1;
   int nbatches=nprocs;
-  cgsize_t maxnnodesbatch = gnnodes - ((nbatches-1)*gnnodes/nbatches + 1) + 1;
-  /* std::cout << me << " " << gnnodes << " " << maxnnodesbatch << std::endl; */
+  /* cgsize_t maxnnodesbatch = gnnodes - ((nbatches-1)*gnnodes/nbatches + 1) + 1; */
+  cgsize_t nnodesperbatch = gnnodes/nbatches;
+  cgsize_t maxnnodesbatch = nnodesperbatch + nbatches + 1;
   x = new double[maxnnodesbatch];
   y = new double[maxnnodesbatch];
   z = new double[maxnnodesbatch];
   for(int b=0; b<nbatches; b++){
-    cgsize_t firstnode = (int) (b*gnnodes/nbatches + 1);
-    cgsize_t lastnode = (int) ((b+1)*gnnodes/nbatches);
+    cgsize_t firstnode = b*nnodesperbatch + 1;
+    cgsize_t lastnode = firstnode + nnodesperbatch-1;
     if(b==(nbatches-1)){//last batch
       lastnode = gnnodes;
     }
-    /* std::cout << me << " IUPN batch " << b << " " << firstnode << " " << lastnode << std::endl; */
     cgsize_t nnodesbatch = (lastnode-firstnode+1);
-    /* std::cout << me << " " << b << " " << firstnode << " " << lastnode << std::endl; */
 
     if(cg_coord_info(index_file, base, zone, 1, &dataType, zonename) != CG_OK) cg_get_error();
-    /* x = new double[gnnodes]; */
     if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
           &firstnode, &lastnode, x) != CG_OK) cg_get_error();
 
     if(cg_coord_info(index_file, base, zone, 2, &dataType, zonename) != CG_OK) cg_get_error();
-    /* y = new double[gnnodes]; */
     if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
           &firstnode, &lastnode, y) != CG_OK) cg_get_error();
 
     if(cg_coord_info(index_file, base, zone, 3, &dataType, zonename) != CG_OK) cg_get_error();
-    /* z = new double[gnnodes]; */
     if(cg_coord_read(index_file, base, zone, zonename, CGNS_ENUMV(RealDouble),
           &firstnode, &lastnode, z) != CG_OK) cg_get_error();
 
     real_t sx, sy, sz;
-    /* for(idx_t i=0; i<gnnodes; i++){ */
     int j=0;
     for(idx_t i=firstnode-1; i<lastnode; i++){
       if(global_nodes.count(i)!=0){
