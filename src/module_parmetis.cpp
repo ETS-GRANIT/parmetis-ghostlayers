@@ -15,8 +15,16 @@
 #define CG_FILE_PHDF5 4
 
 struct potential_neighbors_boundary{
-  std::vector<std::vector<real_t> > nodes;
-  std::vector<std::vector<idx_t> > elems;
+  int esize;
+
+  std::vector<real_t> nodes;
+  std::vector<idx_t> elems;
+
+  idx_t get_nnodes(){return nodes.size()/3;};
+  idx_t get_nelems(){return elems.size()/esize;};
+
+  real_t& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
+  idx_t& get_elems(idx_t i, idx_t j){return elems[i*esize+j];};
 
   //Numbering tables : gtl = global to local, ltg = local to global
   std::map<idx_t,idx_t> elems_gtl;
@@ -31,46 +39,46 @@ std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 void submesh::computemyextents(idx_t nsubmeshes){
   extents.resize(3,std::vector<real_t>(2, 0.));
 
-  extents[0][0] = nodes[0][0];
-  extents[0][1] = nodes[0][0];
+  extents[0][0] = nodes[0*3+0];
+  extents[0][1] = nodes[0*3+0];
 
-  extents[1][0] = nodes[0][1];
-  extents[1][1] = nodes[0][1];
+  extents[1][0] = nodes[0*3+1];
+  extents[1][1] = nodes[0*3+1];
 
-  extents[2][0] = nodes[0][2];
-  extents[2][1] = nodes[0][2];
+  extents[2][0] = nodes[0*3+2];
+  extents[2][1] = nodes[0*3+2];
 
-  for(int i=1;i<nnodes;i++){
-    if(nodes[i][0] < extents[0][0]) extents[0][0] = nodes[i][0];
-    if(nodes[i][0] > extents[0][1]) extents[0][1] = nodes[i][0];
+  for(int i=1;i<get_nnodes();i++){
+    if(nodes[i*3+0] < extents[0][0]) extents[0][0] = nodes[i*3+0];
+    if(nodes[i*3+0] > extents[0][1]) extents[0][1] = nodes[i*3+0];
 
-    if(nodes[i][1] < extents[1][0]) extents[1][0] = nodes[i][1];
-    if(nodes[i][1] > extents[1][1]) extents[1][1] = nodes[i][1];
+    if(nodes[i*3+1] < extents[1][0]) extents[1][0] = nodes[i*3+1];
+    if(nodes[i*3+1] > extents[1][1]) extents[1][1] = nodes[i*3+1];
 
-    if(nodes[i][2] < extents[2][0]) extents[2][0] = nodes[i][2];
-    if(nodes[i][2] > extents[2][1]) extents[2][1] = nodes[i][2];
+    if(nodes[i*3+2] < extents[2][0]) extents[2][0] = nodes[i*3+2];
+    if(nodes[i*3+2] > extents[2][1]) extents[2][1] = nodes[i*3+2];
   }
 
 }
 
 bool submesh::isBoundary(idx_t ielem){
   for(idx_t i=0; i<esize; i++){
-    if(neighbors[ielem][i] == -1) return(1);
+    if(neighbors[ielem*esize+i] == -1) return(1);
   }
   return(0);
 }
 
 void submesh::Addelems(idx_t *newelems, idx_t offset, idx_t nnewelems, idx_t newesize){
-  nelems += nnewelems;
   esize = newesize; //should'nt change
-  std::vector<std::vector<idx_t> > tmpelems(nnewelems, std::vector<idx_t>(esize, 0));
+  int nelems = get_nelems() + nnewelems;
+  std::vector<idx_t> tmpelems(esize*nnewelems, 0);
   for(idx_t i=0;i<nnewelems;i++){
     elems_gtl.insert(std::make_pair(newelems[offset+i*(esize+1)],i+nelems-nnewelems));
     elems_ltg.insert(std::make_pair(i+nelems-nnewelems,newelems[offset+i*(esize+1)]));
 
     for(idx_t k=0; k<esize; k++){
-      tmpelems[i][k] = newelems[offset+i*(esize+1)+k+1];
-      nodesindex.insert(tmpelems[i][k]);
+      tmpelems[i*esize+k] = newelems[offset+i*(esize+1)+k+1];
+      nodesindex.insert(tmpelems[i*esize+k]);
     }
   }
   elems.insert(elems.end(), tmpelems.begin(), tmpelems.end());
@@ -549,12 +557,12 @@ void writeneighbors(std::vector<submesh> &submeshesowned, idx_t esize){
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_neighbors.dat";
     std::ofstream outFile(prefixedOutputFilename.str());
     outFile << std::setprecision(16);
-    for(idx_t i=0; i<submeshesowned[k].nelems; i++){
+    for(idx_t i=0; i<submeshesowned[k].get_nelems(); i++){
       outFile << submeshesowned[k].elems_ltg[i] << " ";
       for(idx_t j=0; j<submeshesowned[k].esize; j++){
-        idx_t value = submeshesowned[k].neighbors[i][j];
+        idx_t value = submeshesowned[k].get_neighbors(i,j);
         if(value!=-1){
-          outFile << submeshesowned[k].elems_ltg[submeshesowned[k].neighbors[i][j]] << " ";
+          outFile << submeshesowned[k].elems_ltg[submeshesowned[k].get_neighbors(i,j)] << " ";
         }
         else{
           outFile << "-1 ";
@@ -568,8 +576,8 @@ void writeneighbors(std::vector<submesh> &submeshesowned, idx_t esize){
 void writeCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
     idx_t indrenum;
-    idx_t nNodes = submeshesowned[k].nnodes;
-    idx_t nElems = submeshesowned[k].nelems;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
+    idx_t nElems = submeshesowned[k].get_nelems();
     std::stringstream prefixedOutputFilename;
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_cuteflow.txt";
     std::ofstream outFile(prefixedOutputFilename.str());
@@ -577,7 +585,7 @@ void writeCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     outFile << "Table de coordonnees" << std::endl;
     outFile << nNodes << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << i+1 << " " << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << i+1 << " " << submeshesowned[k].get_nodes(i,0) << " " << submeshesowned[k].get_nodes(i,1) << " " << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
 
     outFile << std::endl;
@@ -588,7 +596,7 @@ void writeCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
       outFile << i+1 << " ";
       indrenum = submeshesowned[k].renumber_otn[i];
       for(idx_t p=0; p<esize; p++){
-        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[indrenum][p]] << " ";
+        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(indrenum,p)] << " ";
       }
       outFile << std::endl;
     }
@@ -658,31 +666,31 @@ void writeMeshCGNS1(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
     if(cg_base_write(index_file,"Base",icelldim,iphysdim,&index_base)) cg_error_exit();
     /* cgsize_t estart, eend; */
     cgsize_t isize[1][3];
-    isize[0][0]=submeshesowned[k].nodes.size();
-    isize[0][1]=submeshesowned[k].elems.size();
+    isize[0][0]=submeshesowned[k].get_nnodes();
+    isize[0][1]=submeshesowned[k].get_nelems();
     isize[0][2]=0;
     std::stringstream zss;
     zss << "River_" << submeshesowned[k].submeshid;
     if(cg_zone_write(index_file,index_base,zss.str().c_str(),*isize,CGNS_ENUMV(Unstructured),&index_zone) ) cg_error_exit();
-    coord = new double[submeshesowned[k].nodes.size()];
-    for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){
-      coord[i] = submeshesowned[k].nodes[i][0];
+    coord = new double[submeshesowned[k].get_nnodes()];
+    for(idx_t i=0; i<submeshesowned[k].get_nnodes(); i++){
+      coord[i] = submeshesowned[k].get_nodes(i,0);
     }
     if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateX", coord, &Cx)) cg_error_exit();
-    for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){
-      coord[i] = submeshesowned[k].nodes[i][1];
+    for(idx_t i=0; i<submeshesowned[k].get_nnodes(); i++){
+      coord[i] = submeshesowned[k].get_nodes(i,1);
     }
     if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateY", coord, &Cy)) cg_error_exit();
-    for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){
-      coord[i] = submeshesowned[k].nodes[i][2];
+    for(idx_t i=0; i<submeshesowned[k].get_nnodes(); i++){
+      coord[i] = submeshesowned[k].get_nodes(i,2);
     }
     if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateZ", coord, &Cz)) cg_error_exit();
     delete [] coord;
-    int nstart=1, nend=submeshesowned[k].elems.size();
-    elems = new cgsize_t[esize*submeshesowned[k].elems.size()];
-    for(idx_t i=0; i<submeshesowned[k].elems.size(); i++){
+    int nstart=1, nend=submeshesowned[k].get_nelems();
+    elems = new cgsize_t[esize*submeshesowned[k].get_nelems()];
+    for(idx_t i=0; i<submeshesowned[k].get_nelems(); i++){
       for(idx_t j=0; j<esize; j++){
-        elems[esize*i + j] = submeshesowned[k].renumber_otn[submeshesowned[k].nodes_gtl[submeshesowned[k].elems[i][j]]]+1;
+        elems[esize*i + j] = submeshesowned[k].renumber_otn[submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(i,j)]]+1;
       }
     }
     if(cg_section_write(index_file,index_base,index_zone,"Elements",elementType,nstart,nend,0,elems,&index_section)) cg_error_exit();
@@ -756,10 +764,10 @@ void writeMeshCGNS1(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
         if(cg_user_data_write(submeshesowned[k].ud_names[nud-1].c_str())) cg_error_exit();
         cgsize_t dimensions=submeshesowned[k].arrays[nud-1][0].size();
         CGNS_ENUMV(GridLocation_t) location;
-        if(dimensions==submeshesowned[k].nodes.size()){
+        if(dimensions==submeshesowned[k].get_nnodes()){
           location = CGNS_ENUMV(Vertex);
         }
-        if(dimensions==submeshesowned[k].elems.size()){
+        if(dimensions==submeshesowned[k].get_nelems()){
           location = CGNS_ENUMV(CellCenter);
         }
         if(cg_goto(index_file, index_base, zss.str().c_str(), 0, submeshesowned[k].ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
@@ -845,31 +853,31 @@ void writeMeshCGNS2(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
       for(int k=0; k<submeshesowned.size(); k++){
         /* cgsize_t estart, eend; */
         cgsize_t isize[1][3];
-        isize[0][0]=submeshesowned[k].nodes.size();
-        isize[0][1]=submeshesowned[k].elems.size();
+        isize[0][0]=submeshesowned[k].get_nnodes();
+        isize[0][1]=submeshesowned[k].get_nelems();
         isize[0][2]=0;
         std::stringstream zss;
         zss << "River_" << submeshesowned[k].submeshid;
         if(cg_zone_write(index_file,index_base,zss.str().c_str(),*isize,CGNS_ENUMV(Unstructured),&index_zone) ) cg_error_exit();
-        coord = new double[submeshesowned[k].nodes.size()];
-        for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){
-          coord[i] = submeshesowned[k].nodes[i][0];
+        coord = new double[submeshesowned[k].get_nnodes()];
+        for(idx_t i=0; i<submeshesowned[k].get_nnodes(); i++){
+          coord[i] = submeshesowned[k].get_nodes(i,0);
         }
         if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateX", coord, &Cx)) cg_error_exit();
-        for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){
-          coord[i] = submeshesowned[k].nodes[i][1];
+        for(idx_t i=0; i<submeshesowned[k].get_nnodes(); i++){
+          coord[i] = submeshesowned[k].get_nodes(i,1);
         }
         if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateY", coord, &Cy)) cg_error_exit();
-        for(idx_t i=0; i<submeshesowned[k].nodes.size(); i++){
-          coord[i] = submeshesowned[k].nodes[i][2];
+        for(idx_t i=0; i<submeshesowned[k].get_nnodes(); i++){
+          coord[i] = submeshesowned[k].get_nodes(i,2);
         }
         if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateZ", coord, &Cz)) cg_error_exit();
         delete [] coord;
-        int nstart=1, nend=submeshesowned[k].elems.size();
-        elems = new cgsize_t[esize*submeshesowned[k].elems.size()];
-        for(idx_t i=0; i<submeshesowned[k].elems.size(); i++){
+        int nstart=1, nend=submeshesowned[k].get_nelems();
+        elems = new cgsize_t[esize*submeshesowned[k].get_nelems()];
+        for(idx_t i=0; i<submeshesowned[k].get_nelems(); i++){
           for(idx_t j=0; j<esize; j++){
-            elems[esize*i + j] = submeshesowned[k].renumber_otn[submeshesowned[k].nodes_gtl[submeshesowned[k].elems[i][j]]]+1;
+            elems[esize*i + j] = submeshesowned[k].renumber_otn[submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(i,j)]]+1;
           }
         }
         if(cg_section_write(index_file,index_base,index_zone,"Elements",elementType,nstart,nend,0,elems,&index_section)) cg_error_exit();
@@ -943,10 +951,10 @@ void writeMeshCGNS2(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
             if(cg_user_data_write(submeshesowned[k].ud_names[nud-1].c_str())) cg_error_exit();
             cgsize_t dimensions=submeshesowned[k].arrays[nud-1][0].size();
             CGNS_ENUMV(GridLocation_t) location;
-            if(dimensions==submeshesowned[k].nodes.size()){
+            if(dimensions==submeshesowned[k].get_nnodes()){
               location = CGNS_ENUMV(Vertex);
             }
-            if(dimensions==submeshesowned[k].elems.size()){
+            if(dimensions==submeshesowned[k].get_nelems()){
               location = CGNS_ENUMV(CellCenter);
             }
             if(cg_goto(index_file, index_base, zss.str().c_str(), 0, submeshesowned[k].ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
@@ -1042,7 +1050,7 @@ void readArrays(std::vector<submesh> &submeshesowned, std::string filename, MPI_
                   submeshesowned[k].ar_names[nud-1][na-1] = std::string(aname);
                   /* std::cout << udname << " " << aname << std::endl; */
                   /* std::cout << submeshesowned[k].submeshid << " " << submeshesowned[k].ud_names[nud-1] << std::endl; */
-                  submeshesowned[k].arrays[nud-1][na-1].resize(submeshesowned[k].elems.size());
+                  submeshesowned[k].arrays[nud-1][na-1].resize(submeshesowned[k].get_nelems());
                 }
                 int iloc = submeshesowned[k].elems_gtl[i];
                 submeshesowned[k].arrays[nud-1][na-1][iloc] = array[i];
@@ -1061,8 +1069,8 @@ void readArrays(std::vector<submesh> &submeshesowned, std::string filename, MPI_
 void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
     idx_t indrenum;
-    idx_t nNodes = submeshesowned[k].nnodes;
-    idx_t nElems = submeshesowned[k].nelems;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
+    idx_t nElems = submeshesowned[k].get_nelems();
     std::stringstream prefixedOutputFilename;
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_paraview.vtk";
     std::ofstream outFile(prefixedOutputFilename.str());
@@ -1073,7 +1081,7 @@ void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
     outFile << "DATASET UNSTRUCTURED_GRID" << std::endl;
     outFile << "POINTS " << nNodes << " float" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,0) << " " << submeshesowned[k].get_nodes(i,1) << " " << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
 
     idx_t totelemsrecv=0;
@@ -1089,7 +1097,7 @@ void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
       if(indrenum<nElems-totelemsrecv){
       outFile << esize << " ";
       for(idx_t p=0; p<esize; p++){
-        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[indrenum][p]] << " ";
+        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(indrenum,p)] << " ";
       }
       outFile << std::endl;
       }
@@ -1110,8 +1118,8 @@ void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
 void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
     idx_t indrenum;
-    idx_t nNodes = submeshesowned[k].nnodes;
-    idx_t nElems = submeshesowned[k].nelems;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
+    idx_t nElems = submeshesowned[k].get_nelems();
     std::stringstream prefixedOutputFilename;
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_paraview.vtk";
     std::ofstream outFile(prefixedOutputFilename.str());
@@ -1122,7 +1130,7 @@ void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     outFile << "DATASET UNSTRUCTURED_GRID" << std::endl;
     outFile << "POINTS " << nNodes << " float" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,0) << " " << submeshesowned[k].get_nodes(i,1) << " " << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
 
     outFile << std::endl;
@@ -1132,7 +1140,7 @@ void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
       indrenum = submeshesowned[k].renumber_nto[i];
       /* indrenum = i; */
       for(idx_t p=0; p<esize; p++){
-        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[indrenum][p]] << " ";
+        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(indrenum,p)] << " ";
       }
       outFile << std::endl;
     }
@@ -1152,7 +1160,7 @@ void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
 void writesendrecvCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
 
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    idx_t nNodes = submeshesowned[k].nnodes;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
 
     std::map<idx_t, idx_t> trueneighborssend;
     std::map<idx_t, idx_t> trueneighborsrecv;
@@ -1199,7 +1207,7 @@ void writesendrecvCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t 
 void writerecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
 
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    idx_t nNodes = submeshesowned[k].nnodes;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
     std::stringstream prefixedOutputFilename;
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_recv_paraview.vtk";
     std::ofstream outFile(prefixedOutputFilename.str());
@@ -1210,7 +1218,7 @@ void writerecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     outFile << "DATASET UNSTRUCTURED_GRID" << std::endl;
     outFile << "POINTS " << nNodes << " float" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,0) << " " << submeshesowned[k].get_nodes(i,1) << " " << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
 
 
@@ -1229,7 +1237,7 @@ void writerecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
         idx_t itloc = submeshesowned[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[*it]];
         outFile << esize << " ";
         for(idx_t p=0; p<esize; p++){
-          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[itloc][p]] << " ";
+          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(itloc,p)] << " ";
         }
         outFile << std::endl;
       }
@@ -1250,14 +1258,14 @@ void writerecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     outFile << "SCALARS b float" << std::endl;
     outFile << "LOOKUP_TABLE default" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
   }
 }
 
 void writesendVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    idx_t nNodes = submeshesowned[k].nnodes;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
     std::stringstream prefixedOutputFilename;
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_send_paraview.vtk";
     std::ofstream outFile(prefixedOutputFilename.str());
@@ -1268,7 +1276,7 @@ void writesendVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     outFile << "DATASET UNSTRUCTURED_GRID" << std::endl;
     outFile << "POINTS " << nNodes << " float" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,0) << " " << submeshesowned[k].get_nodes(i,1) << " " << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
 
     idx_t nbelemssend(0);
@@ -1284,7 +1292,7 @@ void writesendVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
       for(it=submeshesowned[k].elemstosend[*iter].begin(); it!=submeshesowned[k].elemstosend[*iter].end(); it++){
         outFile << esize << " ";
         for(idx_t p=0; p<esize; p++){
-          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[*it][p]] << " ";
+          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(*it,p)] << " ";
         }
         outFile << std::endl;
       }
@@ -1305,13 +1313,13 @@ void writesendVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
     outFile << "SCALARS b float" << std::endl;
     outFile << "LOOKUP_TABLE default" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
   }
 }
 void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim){
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    idx_t nNodes = submeshesowned[k].nnodes;
+    idx_t nNodes = submeshesowned[k].get_nnodes();
     std::stringstream prefixedOutputFilename;
     prefixedOutputFilename << submeshesowned[k].submeshid << "_output_boundary_paraview.vtk";
     std::ofstream outFile(prefixedOutputFilename.str());
@@ -1322,7 +1330,7 @@ void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t d
     outFile << "DATASET UNSTRUCTURED_GRID" << std::endl;
     outFile << "POINTS " << nNodes << " float" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][0] << " " << submeshesowned[k].nodes[i][1] << " " << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,0) << " " << submeshesowned[k].get_nodes(i,1) << " " << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
 
     idx_t nbelemssend(0);
@@ -1338,7 +1346,7 @@ void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t d
       for(it=submeshesowned[k].elemstosend[*iter].begin(); it!=submeshesowned[k].elemstosend[*iter].end(); it++){
         outFile << esize << " ";
         for(idx_t p=0; p<esize; p++){
-          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].elems[*it][p]] << " ";
+          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(*it,p)] << " ";
         }
         outFile << std::endl;
       }
@@ -1359,7 +1367,7 @@ void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t d
     outFile << "SCALARS b float" << std::endl;
     outFile << "LOOKUP_TABLE default" << std::endl;
     for(idx_t i=0; i<nNodes; i++){
-      outFile << submeshesowned[k].nodes[i][2] << std::endl;
+      outFile << submeshesowned[k].get_nodes(i,2) << std::endl;
     }
   }
 }
@@ -1370,8 +1378,8 @@ void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename
   MPI_Comm_rank(MPI_COMM_WORLD,&me);
 
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    submeshesowned[k].nnodes = submeshesowned[k].nodesindex.size();
-    submeshesowned[k].nodes.resize(submeshesowned[k].nnodes, std::vector<real_t>(3, 0.));
+    /* submeshesowned[k].nnodes = submeshesowned[k].nodesindex.size(); */
+    submeshesowned[k].nodes.resize(3*submeshesowned[k].nodesindex.size(), 0.);
   }
 
   std::ifstream nodesFile(nodesFilename);
@@ -1384,9 +1392,9 @@ void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename
     nodesFile >> sx >> sy >> sz;
     for(idx_t k=0; k<submeshesowned.size(); k++){
       if(submeshesowned[k].nodesindex.find(i)!=submeshesowned[k].nodesindex.end()){
-        submeshesowned[k].nodes[nloc[k]][0] = sx;
-        submeshesowned[k].nodes[nloc[k]][1] = sy;
-        submeshesowned[k].nodes[nloc[k]][2] = sz;
+        submeshesowned[k].get_nodes(nloc[k],0) = sx;
+        submeshesowned[k].get_nodes(nloc[k],1) = sy;
+        submeshesowned[k].get_nodes(nloc[k],2) = sz;
         submeshesowned[k].nodes_ltg.insert({nloc[k], i});
         submeshesowned[k].nodes_gtl.insert({i, nloc[k]});
         nloc[k] += 1;
@@ -1436,8 +1444,8 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
 
   //Resize each subdomain nodes vector
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    submeshesowned[k].nnodes = submeshesowned[k].nodesindex.size();
-    submeshesowned[k].nodes.resize(submeshesowned[k].nnodes, std::vector<real_t>(3, 0.));
+    /* submeshesowned[k].nnodes = submeshesowned[k].nodesindex.size(); */
+    submeshesowned[k].nodes.resize(3*submeshesowned[k].nodesindex.size(), 0.);
   }
 
   //Construct a global_nodes vector so that we only check once if we own a node
@@ -1486,9 +1494,9 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
         for(std::set<idx_t>::iterator it=global_nodes[i].begin();
             it!=global_nodes[i].end(); it++){
           int k=*it;
-          submeshesowned[k].nodes[nloc[k]][0] = x[j];
-          submeshesowned[k].nodes[nloc[k]][1] = y[j];
-          submeshesowned[k].nodes[nloc[k]][2] = z[j];
+          submeshesowned[k].get_nodes(nloc[k],0) = x[j];
+          submeshesowned[k].get_nodes(nloc[k],1) = y[j];
+          submeshesowned[k].get_nodes(nloc[k],2) = z[j];
           submeshesowned[k].nodes_ltg.insert({nloc[k], i});
           submeshesowned[k].nodes_gtl.insert({i, nloc[k]});
           nloc[k] += 1;
@@ -1500,10 +1508,9 @@ void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename,
   if (cg_close(index_file)) cg_error_exit();
 }
 
-void buildBoundaryEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set){
+void buildBoundaryEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set){
 
-  idx_t nelems=elems.size();
-  idx_t esize=elems[0].size();
+  idx_t nelems=elems.size()/esize;
 
   std::set<idx_t>::iterator it=elems_set.begin();
 
@@ -1512,7 +1519,7 @@ void buildBoundaryEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_
   for(it=elems_set.begin();it!=elems_set.end();it++){
     for(idx_t s=0; s<esize; s++){
       sp = (s+1)%esize;
-      dummyPair = std::make_pair(std::min(elems[*it][s], elems[*it][sp]), std::max(elems[*it][s],elems[*it][sp]));
+      dummyPair = std::make_pair(std::min(elems[*it*esize+s], elems[*it*esize+sp]), std::max(elems[*it*esize+s],elems[*it*esize+sp]));
       if(edges.find(dummyPair) != edges.end()){
         edges[dummyPair] = std::make_pair(edges[dummyPair].first, *it);
       }
@@ -1523,17 +1530,16 @@ void buildBoundaryEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_
   }
 }
 
-void buildEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
+void buildEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
 
-  idx_t nelems=elems.size();
-  idx_t esize=elems[0].size();
+  idx_t nelems=elems.size()/esize;
 
   std::pair<idx_t, idx_t> dummyPair;
   idx_t sp;
   for(idx_t i=0;i<nelems;i++){
     for(idx_t s=0; s<esize; s++){
       sp = (s+1)%esize;
-      dummyPair = std::make_pair(std::min(elems[i][s], elems[i][sp]), std::max(elems[i][s],elems[i][sp]));
+      dummyPair = std::make_pair(std::min(elems[i*esize+s], elems[i*esize+sp]), std::max(elems[i*esize+s],elems[i*esize+sp]));
       if(edges.find(dummyPair) != edges.end()){
         edges[dummyPair] = std::make_pair(edges[dummyPair].first, i);
       }
@@ -1544,10 +1550,9 @@ void buildEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std:
   }
 }
 
-void buildBoundaryFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::set<idx_t> &elems_set){
+void buildBoundaryFaces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::set<idx_t> &elems_set){
   std::set<idx_t>::iterator it;
-  idx_t nelems=elems.size();
-  idx_t esize=elems[0].size();
+  idx_t nelems=elems.size()/esize;
   idx_t fsize=3; //tetrahedron
   std::vector<idx_t> dummy(fsize,-1);
   std::vector<idx_t> sp(fsize,-1);
@@ -1558,7 +1563,7 @@ void buildBoundaryFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_
         sp[k] = (s+k)%esize;
       }
       for(idx_t k=0;k<fsize;k++){
-        dummy[k] = elems[*it][sp[k]];
+        dummy[k] = elems[*it*esize+sp[k]];
       }
       std::sort(dummy.begin(), dummy.end());
       if(faces.find(dummy) != faces.end()){
@@ -1571,9 +1576,8 @@ void buildBoundaryFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_
   }
 }
 
-void buildFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
-  idx_t nelems=elems.size();
-  idx_t esize=elems[0].size();
+void buildFaces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
+  idx_t nelems=elems.size()/esize;
   idx_t fsize=3; //tetrahedron
   std::vector<idx_t> dummy(fsize,-1);
   std::vector<idx_t> sp(fsize,-1);
@@ -1584,7 +1588,7 @@ void buildFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std:
         sp[k] = (s+k)%esize;
       }
       for(idx_t k=0;k<fsize;k++){
-        dummy[k] = elems[i][sp[k]];
+        dummy[k] = elems[i*esize+sp[k]];
       }
       std::sort(dummy.begin(), dummy.end());
       if(faces.find(dummy) != faces.end()){
@@ -1597,10 +1601,8 @@ void buildFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std:
   }
 }
 
-void buildElemConnectivity2D(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<std::vector<idx_t> > &neighbors){
+void buildElemConnectivity2D(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<idx_t> &neighbors){
   std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>:: iterator it = edges.begin();
-
-  idx_t esize=elems[0].size();
 
   idx_t s1,s2,elem1,elem2,sp;
   while(it != edges.end())
@@ -1613,13 +1615,13 @@ void buildElemConnectivity2D(std::vector<std::vector<idx_t> > &elems, std::unord
     if(elem2!=-1){
       for(idx_t s=0; s<esize; s++){
         sp = (s+1)%esize;
-        if(((elems[elem1][s] == s1) and (elems[elem1][sp] == s2)) or 
-            ((elems[elem1][s] == s2) and (elems[elem1][sp] == s1))){
-          neighbors[elem1][s] = elem2;
+        if(((elems[elem1*esize+s] == s1) and (elems[elem1*esize+sp] == s2)) or 
+            ((elems[elem1*esize+s] == s2) and (elems[elem1*esize+sp] == s1))){
+          neighbors[elem1*esize+s] = elem2;
         }
-        if(((elems[elem2][s] == s1) and (elems[elem2][sp] == s2)) or 
-            ((elems[elem2][s] == s2) and (elems[elem2][sp] == s1))){
-          neighbors[elem2][s] = elem1;
+        if(((elems[elem2*esize+s] == s1) and (elems[elem2*esize+sp] == s2)) or 
+            ((elems[elem2*esize+s] == s2) and (elems[elem2*esize+sp] == s1))){
+          neighbors[elem2*esize+s] = elem1;
         }
       }
     }
@@ -1627,8 +1629,7 @@ void buildElemConnectivity2D(std::vector<std::vector<idx_t> > &elems, std::unord
   }
 }
 
-void buildElemConnectivity3D(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<std::vector<idx_t> > &neighbors){
-  idx_t esize=elems[0].size();
+void buildElemConnectivity3D(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<idx_t> &neighbors){
   std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>:: iterator it = faces.begin();
 
   idx_t faceSize=3;//Tetrahedron
@@ -1643,27 +1644,27 @@ void buildElemConnectivity3D(std::vector<std::vector<idx_t> > &elems, std::unord
     if(elem2!=-1){
       for(idx_t s=0; s<esize; s++){ //Pour chaque face
 
-        faceVert[0] = elems[elem1][s];
+        faceVert[0] = elems[elem1*esize+s];
         for(idx_t k=1; k<faceSize; k++){
-          faceVert[k] = elems[elem1][(s+k)%esize];
+          faceVert[k] = elems[elem1*esize+(s+k)%esize];
         }
 
         cond1 = true;
         for(idx_t k=0;k<faceSize;k++){
           cond1 = ((std::find(faceVert.begin(), faceVert.end(), it->first[k])!=faceVert.end()) and cond1);
         }
-        if(cond1) neighbors[elem1][s] = elem2;
+        if(cond1) neighbors[elem1*esize+s] = elem2;
 
-        faceVert[0] = elems[elem2][s];
+        faceVert[0] = elems[elem2*esize+s];
         for(idx_t k=1; k<faceSize; k++){
-          faceVert[k] = elems[elem2][(s+k)%esize];
+          faceVert[k] = elems[elem2*esize+(s+k)%esize];
         }
 
         cond1 = true;
         for(idx_t k=0;k<faceSize;k++){
           cond1 = ((std::find(faceVert.begin(), faceVert.end(), it->first[k])!=faceVert.end()) and cond1);
         }
-        if(cond1) neighbors[elem2][s] = elem1;
+        if(cond1) neighbors[elem2*esize+s] = elem1;
       }
     }
     it++;
@@ -1674,17 +1675,17 @@ void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
   if(dimension==2){
     for(idx_t k=0;k<submeshesowned.size();k++){
       std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
-      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
-      buildEdges(submeshesowned[k].elems, edges);
-      buildElemConnectivity2D(submeshesowned[k].elems, edges, submeshesowned[k].neighbors);
+      submeshesowned[k].neighbors.resize(submeshesowned[k].get_nelems()*submeshesowned[k].esize, -1);
+      buildEdges(submeshesowned[k].esize, submeshesowned[k].elems, edges);
+      buildElemConnectivity2D(submeshesowned[k].esize,submeshesowned[k].elems, edges, submeshesowned[k].neighbors);
     }
   }
   if(dimension==3){
     for(idx_t k=0;k<submeshesowned.size();k++){
       std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
-      submeshesowned[k].neighbors.resize(submeshesowned[k].nelems, std::vector<idx_t>(submeshesowned[k].esize,-1));
-      buildFaces(submeshesowned[k].elems, faces);
-      buildElemConnectivity3D(submeshesowned[k].elems, faces, submeshesowned[k].neighbors);
+      submeshesowned[k].neighbors.resize(submeshesowned[k].get_nelems()*submeshesowned[k].esize, -1);
+      buildFaces(submeshesowned[k].esize,submeshesowned[k].elems, faces);
+      buildElemConnectivity3D(submeshesowned[k].esize,submeshesowned[k].elems, faces, submeshesowned[k].neighbors);
     }
   }
 }
@@ -1695,16 +1696,16 @@ void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
 void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t method, idx_t numlayers){
 
   for(idx_t k=0;k<submeshesowned.size();k++){
-    for(idx_t i=0;i<submeshesowned[k].nelems;i++){
+    for(idx_t i=0;i<submeshesowned[k].get_nelems();i++){
       if(submeshesowned[k].isBoundary(i)){
         submeshesowned[k].boundaryelems.insert(i);
 
         /* if(method==1){ */
         //Add boundarynodes
         for(idx_t j=0; j<submeshesowned[k].esize; j++){
-          if(submeshesowned[k].neighbors[i][j] == -1){
-            submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[i][j]);
-            submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[i][(j+1)%submeshesowned[k].esize]);
+          if(submeshesowned[k].get_neighbors(i,j) == -1){
+            submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(i,j));
+            submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(i,(j+1)%submeshesowned[k].esize));
           }
         }
         /* } */
@@ -1713,9 +1714,9 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
 
     //If method=1 add cells that have only a point in the boundary points
     if(method==1){
-      for(idx_t i=0;i<submeshesowned[k].nelems;i++){
+      for(idx_t i=0;i<submeshesowned[k].get_nelems();i++){
         for(idx_t j=0;j<submeshesowned[k].esize;j++){
-          if(submeshesowned[k].boundarynodes.find(submeshesowned[k].elems[i][j])!=submeshesowned[k].boundarynodes.end()){
+          if(submeshesowned[k].boundarynodes.find(submeshesowned[k].get_elems(i,j))!=submeshesowned[k].boundarynodes.end()){
             submeshesowned[k].boundaryelems.insert(i);
           }
         }
@@ -1724,7 +1725,7 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
       for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
           it!=submeshesowned[k].boundaryelems.end();it++){
         for(idx_t p=0; p<submeshesowned[k].esize; p++){
-          submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[*it][p]);
+          submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,p));
         }
       }
     }
@@ -1734,13 +1735,13 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
       std::set<idx_t>::iterator it;
       for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
         for(idx_t j=0;j<submeshesowned[k].esize;j++){
-          if(submeshesowned[k].neighbors[*it][j] != -1){
-            submeshesowned[k].boundaryelems.insert(submeshesowned[k].neighbors[*it][j]);
+          if(submeshesowned[k].get_neighbors(*it,j) != -1){
+            submeshesowned[k].boundaryelems.insert(submeshesowned[k].get_neighbors(*it,j));
 
             /* if(method==1){ */
             //Add boundarynodes
             for(idx_t j=0; j<submeshesowned[k].esize; j++){
-              submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[*it][j]);
+              submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,j));
             }
             /* } */
 
@@ -1749,9 +1750,9 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
       }
 
       if(method==1){
-        for(idx_t i=0;i<submeshesowned[k].nelems;i++){
+        for(idx_t i=0;i<submeshesowned[k].get_nelems();i++){
           for(idx_t j=0;j<submeshesowned[k].esize;j++){
-            if(submeshesowned[k].boundarynodes.find(submeshesowned[k].elems[i][j])!=submeshesowned[k].boundarynodes.end()){
+            if(submeshesowned[k].boundarynodes.find(submeshesowned[k].get_elems(i,j))!=submeshesowned[k].boundarynodes.end()){
               submeshesowned[k].boundaryelems.insert(i);
             }
           }
@@ -1759,7 +1760,7 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
         for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
             it!=submeshesowned[k].boundaryelems.end();it++){
           for(idx_t p=0; p<submeshesowned[k].esize; p++){
-            submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[*it][p]);
+            submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,p));
           }
         }
       }
@@ -1768,7 +1769,7 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
     for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
         it!=submeshesowned[k].boundaryelems.end();it++){
       for(idx_t p=0; p<submeshesowned[k].esize; p++){
-        submeshesowned[k].boundarynodes.insert(submeshesowned[k].elems[*it][p]);
+        submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,p));
       }
     }
 
@@ -1777,21 +1778,23 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
 
 void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimension, idx_t method, idx_t numlayers){
 
+  int esize = submeshesowned[0].esize;
+
   for(idx_t k; k<submeshesowned.size(); k++){
     //Build my boundary connectivity
     if(dimension==2){
       std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> tmp_boundary_edges;
-      buildBoundaryEdges(submeshesowned[k].elems, tmp_boundary_edges, submeshesowned[k].boundaryelems);
+      buildBoundaryEdges(esize,submeshesowned[k].elems, tmp_boundary_edges, submeshesowned[k].boundaryelems);
 
       std::set<idx_t>::iterator iter;
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
           iter!= submeshesowned[k].potentialneighbors.end(); iter++){
 
         std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> pn_edges;
-        std::vector<std::vector<idx_t> > pn_neighbors(g_potentialneighbors[*iter].elems.size(), std::vector<idx_t>(submeshesowned[k].esize,-1));
+        std::vector<idx_t> pn_neighbors(g_potentialneighbors[*iter].get_nelems()*esize,-1);
 
-        buildEdges(g_potentialneighbors[*iter].elems, pn_edges);
-        buildElemConnectivity2D(g_potentialneighbors[*iter].elems, pn_edges, pn_neighbors);
+        buildEdges(esize,g_potentialneighbors[*iter].elems, pn_edges);
+        buildElemConnectivity2D(esize,g_potentialneighbors[*iter].elems, pn_edges, pn_neighbors);
 
         std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>::iterator it_edges;
         for(it_edges=pn_edges.begin();it_edges!=pn_edges.end();it_edges++){
@@ -1817,9 +1820,9 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         //RECV If method=1 add cells that have only a point in the boundary points
         if(method==1){
-          for(idx_t i=0;i<g_potentialneighbors[*iter].elems.size();i++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].elems[i][j])!=submeshesowned[k].nodestorecv[*iter].end()){
+          for(idx_t i=0;i<g_potentialneighbors[*iter].get_nelems();i++){
+            for(idx_t j=0;j<esize;j++){
+              if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
                 submeshesowned[k].elemstorecv[*iter].insert(i);
               }
             }
@@ -1827,8 +1830,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
               it!=submeshesowned[k].elemstorecv[*iter].end();
               it++){
-            for(idx_t p=0; p<submeshesowned[k].esize; p++){
-              submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][p]);
+            for(idx_t p=0; p<esize; p++){
+              submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
             }
           }
         }
@@ -1838,8 +1841,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
               it!=submeshesowned[k].boundaryelems.end();
               it++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].elems[*it][j])!=submeshesowned[k].nodestosend[*iter].end()){
+            for(idx_t j=0;j<esize;j++){
+              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
                 submeshesowned[k].elemstosend[*iter].insert(*it);
               }
             }
@@ -1847,8 +1850,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
               it!=submeshesowned[k].elemstosend[*iter].end();
               it++){
-            for(idx_t p=0; p<submeshesowned[k].esize; p++){
-              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][p]);
+            for(idx_t p=0; p<esize; p++){
+              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
             }
           }
         }
@@ -1859,12 +1862,12 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           std::set<idx_t> tmpnewboundaryelems = submeshesowned[k].elemstosend[*iter];
           std::set<idx_t>::iterator it;
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(submeshesowned[k].neighbors[*it][j] != -1){
-                submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].neighbors[*it][j]);
+            for(idx_t j=0;j<esize;j++){
+              if(submeshesowned[k].get_neighbors(*it,j) != -1){
+                submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].get_neighbors(*it,j));
                 //Add boundarynodes
-                for(idx_t j=0; j<submeshesowned[k].esize; j++){
-                  submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][j]);
+                for(idx_t j=0; j<esize; j++){
+                  submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,j));
                 }
               }
             } 
@@ -1874,8 +1877,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
                 it!=submeshesowned[k].boundaryelems.end();
                 it++){
-              for(idx_t j=0;j<submeshesowned[k].esize;j++){
-                if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].elems[*it][j])!=submeshesowned[k].nodestosend[*iter].end()){
+              for(idx_t j=0;j<esize;j++){
+                if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
                   submeshesowned[k].elemstosend[*iter].insert(*it);
                 }
               }
@@ -1883,8 +1886,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
                 it!=submeshesowned[k].elemstosend[*iter].end();
                 it++){
-              for(idx_t p=0; p<submeshesowned[k].esize; p++){
-                submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][p]);
+              for(idx_t p=0; p<esize; p++){
+                submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
               }
             }
           }
@@ -1893,21 +1896,21 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           tmpnewboundaryelems.clear();
           tmpnewboundaryelems = submeshesowned[k].elemstorecv[*iter];
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(pn_neighbors[*it][j] != -1){
-                submeshesowned[k].elemstorecv[*iter].insert(pn_neighbors[*it][j]);
+            for(idx_t j=0;j<esize;j++){
+              if(pn_neighbors[*it*esize+j] != -1){
+                submeshesowned[k].elemstorecv[*iter].insert(pn_neighbors[*it*esize+j]);
                 //Add boundarynodes
-                for(idx_t j=0; j<submeshesowned[k].esize; j++){
-                  submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][j]);
+                for(idx_t j=0; j<esize; j++){
+                  submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
                 }
               }
             } 
           }
           //If method=1 add cells that have only a point in the boundary points
           if(method==1){
-            for(idx_t i=0; i<g_potentialneighbors[*iter].elems.size(); i++){
-              for(idx_t j=0;j<submeshesowned[k].esize;j++){
-                if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].elems[i][j])!=submeshesowned[k].nodestorecv[*iter].end()){
+            for(idx_t i=0; i<g_potentialneighbors[*iter].get_nelems(); i++){
+              for(idx_t j=0;j<esize;j++){
+                if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
                   submeshesowned[k].elemstorecv[*iter].insert(i);
                 }
               }
@@ -1915,8 +1918,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
                 it!=submeshesowned[k].elemstorecv[*iter].end();
                 it++){
-              for(idx_t p=0; p<submeshesowned[k].esize; p++){
-                submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][p]);
+              for(idx_t p=0; p<esize; p++){
+                submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
               }
             }
           }
@@ -1926,8 +1929,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
             it!=submeshesowned[k].elemstorecv[*iter].end();it++){
-          for(idx_t p=0; p<submeshesowned[k].esize; p++){
-            submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][p]);
+          for(idx_t p=0; p<esize; p++){
+            submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
           }
         }
 
@@ -1937,17 +1940,17 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
     if(dimension==3){
       std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> tmp_boundary_faces;
       idx_t faceSize=3;//Tetrahedron
-      buildBoundaryFaces(submeshesowned[k].elems, tmp_boundary_faces, submeshesowned[k].boundaryelems);
+      buildBoundaryFaces(esize,submeshesowned[k].elems, tmp_boundary_faces, submeshesowned[k].boundaryelems);
 
       std::set<idx_t>::iterator iter;
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
           iter!= submeshesowned[k].potentialneighbors.end(); iter++){
 
         std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> pn_faces;
-        std::vector<std::vector<idx_t> > pn_neighbors(g_potentialneighbors[*iter].elems.size(), std::vector<idx_t>(submeshesowned[k].esize,-1));
+        std::vector<idx_t> pn_neighbors(g_potentialneighbors[*iter].get_nelems()*esize,-1);
 
-        buildFaces(g_potentialneighbors[*iter].elems, pn_faces);
-        buildElemConnectivity3D(g_potentialneighbors[*iter].elems, pn_faces, pn_neighbors);
+        buildFaces(esize,g_potentialneighbors[*iter].elems, pn_faces);
+        buildElemConnectivity3D(esize,g_potentialneighbors[*iter].elems, pn_faces, pn_neighbors);
 
         std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>::iterator it_faces;
 
@@ -1975,9 +1978,9 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
         }
         //RECV If method=1 add cells that have only a point in the boundary points
         if(method==1){
-          for(idx_t i=0;i<g_potentialneighbors[*iter].elems.size();i++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].elems[i][j])!=submeshesowned[k].nodestorecv[*iter].end()){
+          for(idx_t i=0;i<g_potentialneighbors[*iter].get_nelems();i++){
+            for(idx_t j=0;j<esize;j++){
+              if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
                 submeshesowned[k].elemstorecv[*iter].insert(i);
               }
             }
@@ -1985,8 +1988,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
               it!=submeshesowned[k].elemstorecv[*iter].end();
               it++){
-            for(idx_t p=0; p<submeshesowned[k].esize; p++){
-              submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][p]);
+            for(idx_t p=0; p<esize; p++){
+              submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
             }
           }
         }
@@ -1996,8 +1999,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
               it!=submeshesowned[k].boundaryelems.end();
               it++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].elems[*it][j])!=submeshesowned[k].nodestosend[*iter].end()){
+            for(idx_t j=0;j<esize;j++){
+              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
                 submeshesowned[k].elemstosend[*iter].insert(*it);
               }
             }
@@ -2005,8 +2008,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
               it!=submeshesowned[k].elemstosend[*iter].end();
               it++){
-            for(idx_t p=0; p<submeshesowned[k].esize; p++){
-              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][p]);
+            for(idx_t p=0; p<esize; p++){
+              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
             }
           }
         }
@@ -2017,12 +2020,12 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           std::set<idx_t> tmpnewboundaryelems = submeshesowned[k].elemstosend[*iter];
           std::set<idx_t>::iterator it;
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(submeshesowned[k].neighbors[*it][j] != -1){
-                submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].neighbors[*it][j]);
+            for(idx_t j=0;j<esize;j++){
+              if(submeshesowned[k].get_neighbors(*it,j) != -1){
+                submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].get_neighbors(*it,j));
                 //Add boundarynodes
-                for(idx_t j=0; j<submeshesowned[k].esize; j++){
-                  submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][j]);
+                for(idx_t j=0; j<esize; j++){
+                  submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,j));
                 }
               }
             } 
@@ -2032,8 +2035,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
                 it!=submeshesowned[k].boundaryelems.end();
                 it++){
-              for(idx_t j=0;j<submeshesowned[k].esize;j++){
-                if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].elems[*it][j])!=submeshesowned[k].nodestosend[*iter].end()){
+              for(idx_t j=0;j<esize;j++){
+                if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
                   submeshesowned[k].elemstosend[*iter].insert(*it);
                 }
               }
@@ -2041,8 +2044,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
                 it!=submeshesowned[k].elemstosend[*iter].end();
                 it++){
-              for(idx_t p=0; p<submeshesowned[k].esize; p++){
-                submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].elems[*it][p]);
+              for(idx_t p=0; p<esize; p++){
+                submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
               }
             }
           }
@@ -2051,21 +2054,21 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           tmpnewboundaryelems.clear();
           tmpnewboundaryelems = submeshesowned[k].elemstorecv[*iter];
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
-            for(idx_t j=0;j<submeshesowned[k].esize;j++){
-              if(pn_neighbors[*it][j] != -1){
-                submeshesowned[k].elemstorecv[*iter].insert(pn_neighbors[*it][j]);
+            for(idx_t j=0;j<esize;j++){
+              if(pn_neighbors[*it*esize+j] != -1){
+                submeshesowned[k].elemstorecv[*iter].insert(pn_neighbors[*it*esize+j]);
                 //Add boundarynodes
-                for(idx_t j=0; j<submeshesowned[k].esize; j++){
-                  submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][j]);
+                for(idx_t j=0; j<esize; j++){
+                  submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
                 }
               }
             } 
           }
           //If method=1 add cells that have only a point in the boundary points
           if(method==1){
-            for(idx_t i=0; i<g_potentialneighbors[*iter].elems.size(); i++){
-              for(idx_t j=0;j<submeshesowned[k].esize;j++){
-                if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].elems[i][j])!=submeshesowned[k].nodestorecv[*iter].end()){
+            for(idx_t i=0; i<g_potentialneighbors[*iter].get_nelems(); i++){
+              for(idx_t j=0;j<esize;j++){
+                if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
                   submeshesowned[k].elemstorecv[*iter].insert(i);
                 }
               }
@@ -2073,8 +2076,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
                 it!=submeshesowned[k].elemstorecv[*iter].end();
                 it++){
-              for(idx_t p=0; p<submeshesowned[k].esize; p++){
-                submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][p]);
+              for(idx_t p=0; p<esize; p++){
+                submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
               }
             }
           }
@@ -2084,8 +2087,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
             it!=submeshesowned[k].elemstorecv[*iter].end();it++){
-          for(idx_t p=0; p<submeshesowned[k].esize; p++){
-            submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].elems[*it][p]);
+          for(idx_t p=0; p<esize; p++){
+            submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
           }
         }
       }
@@ -2155,9 +2158,9 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
     for(it=submeshesowned[k].boundarynodes.begin(); it!=submeshesowned[k].boundarynodes.end(); it++){
       idum = submeshesowned[k].nodes_gtl[*it];
       nodestosend[4*k*maxnodestosend+4*iloc] = (idx_t) *it;
-      nodestosend[4*k*maxnodestosend+4*iloc+1] = submeshesowned[k].nodes[idum][0];
-      nodestosend[4*k*maxnodestosend+4*iloc+2] = submeshesowned[k].nodes[idum][1];
-      nodestosend[4*k*maxnodestosend+4*iloc+3] = submeshesowned[k].nodes[idum][2];
+      nodestosend[4*k*maxnodestosend+4*iloc+1] = submeshesowned[k].get_nodes(idum,0);
+      nodestosend[4*k*maxnodestosend+4*iloc+2] = submeshesowned[k].get_nodes(idum,1);
+      nodestosend[4*k*maxnodestosend+4*iloc+3] = submeshesowned[k].get_nodes(idum,2);
       iloc++;
     }
   }
@@ -2180,15 +2183,16 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
         }
         else{
           potential_neighbors_boundary pnbound;
-          pnbound.nodes.resize(submeshesowned[k].boundarynodes.size(),std::vector<real_t>(3,0.));
+          pnbound.nodes.resize(submeshesowned[k].boundarynodes.size()*3,0.);
           for(idx_t i=0;i<submeshesowned[k].boundarynodes.size();i++){
             pnbound.nodes_ltg.insert(std::make_pair(i,nodestosend[4*maxnodestosend*k+i*4]));
             pnbound.nodes_gtl.insert(std::make_pair(nodestosend[4*maxnodestosend*k+i*4],i));
-            pnbound.nodes[i][0] = nodestosend[4*maxnodestosend*k+i*4+1];
-            pnbound.nodes[i][1] = nodestosend[4*maxnodestosend*k+i*4+2];
-            pnbound.nodes[i][2] = nodestosend[4*maxnodestosend*k+i*4+3];
+            pnbound.get_nodes(i,0) = nodestosend[4*maxnodestosend*k+i*4+1];
+            pnbound.get_nodes(i,1) = nodestosend[4*maxnodestosend*k+i*4+2];
+            pnbound.get_nodes(i,2) = nodestosend[4*maxnodestosend*k+i*4+3];
           }
           g_potentialneighbors.insert(std::make_pair(submeshesowned[k].submeshid,pnbound));
+          g_potentialneighbors[submeshesowned[k].submeshid].esize = submeshesowned[k].esize;
         }
         msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
       }
@@ -2230,15 +2234,16 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
 
         //Add nodes
         potential_neighbors_boundary pnbound;
-        pnbound.nodes.resize(nnodestorecv[nreq],std::vector<real_t>(3,0.));
+        pnbound.nodes.resize(nnodestorecv[nreq]*3,0.);
         for(idx_t i=0;i<nnodestorecv[nreq];i++){
           pnbound.nodes_ltg.insert(std::make_pair(i,(idx_t) nodestorecv[4*maxnodestorecv*nreq+i*4]));
           pnbound.nodes_gtl.insert(std::make_pair((idx_t) nodestorecv[4*maxnodestorecv*nreq+i*4],i));
-          pnbound.nodes[i][0] = nodestorecv[4*maxnodestorecv*nreq+i*4+1];
-          pnbound.nodes[i][1] = nodestorecv[4*maxnodestorecv*nreq+i*4+2];
-          pnbound.nodes[i][2] = nodestorecv[4*maxnodestorecv*nreq+i*4+3];
+          pnbound.get_nodes(i,0) = nodestorecv[4*maxnodestorecv*nreq+i*4+1];
+          pnbound.get_nodes(i,1) = nodestorecv[4*maxnodestorecv*nreq+i*4+2];
+          pnbound.get_nodes(i,2) = nodestorecv[4*maxnodestorecv*nreq+i*4+3];
         }
         g_potentialneighbors.insert(std::make_pair(*it,pnbound));
+        g_potentialneighbors[*it].esize = submeshesowned[k].esize;
         msgs_recv[ownerofsubmesh[*it]].insert(*it);
         nreq++;
       }
@@ -2254,7 +2259,7 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
       idum = submeshesowned[k].elems_ltg[*it];
       elemstosend[(1+esize)*(maxelemstosend*k+iloc)] = idum;
       for(idx_t j=0;j<esize;j++){
-        elemstosend[(1+esize)*(maxelemstosend*k+iloc)+j+1] = submeshesowned[k].elems[*it][j];
+        elemstosend[(1+esize)*(maxelemstosend*k+iloc)+j+1] = submeshesowned[k].get_elems(*it,j);
       }
       iloc++;
     }
@@ -2276,12 +2281,13 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
           nreq++;
         }
         else{
-          g_potentialneighbors[submeshesowned[k].submeshid].elems.resize(submeshesowned[k].boundaryelems.size(),std::vector<idx_t>(esize,0));
+          g_potentialneighbors[submeshesowned[k].submeshid].esize = esize;
+          g_potentialneighbors[submeshesowned[k].submeshid].elems.resize(submeshesowned[k].boundaryelems.size()*esize,0);
           for(idx_t i=0;i<submeshesowned[k].boundaryelems.size();i++){
             g_potentialneighbors[submeshesowned[k].submeshid].elems_ltg.insert(std::make_pair(i,elemstosend[(1+esize)*(maxelemstosend*k+i)]));
             g_potentialneighbors[submeshesowned[k].submeshid].elems_gtl.insert(std::make_pair(elemstosend[(1+esize)*(maxelemstosend*k+i)],i));
             for(idx_t j=0;j<esize;j++){
-              g_potentialneighbors[submeshesowned[k].submeshid].elems[i][j] = elemstosend[(1+esize)*(maxelemstosend*k+i)+j+1];
+              g_potentialneighbors[submeshesowned[k].submeshid].get_elems(i,j) = elemstosend[(1+esize)*(maxelemstosend*k+i)+j+1];
             }
           }
         }
@@ -2324,12 +2330,13 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
         MPI_Recv(&elemstorecv[nreq*(1+esize)*maxelemstorecv], nelemstorecv[nreq]*(1+esize), IDX_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
 
         //Add elems
-        g_potentialneighbors[*it].elems.resize(nelemstorecv[nreq],std::vector<idx_t>(esize,0));
+        g_potentialneighbors[*it].esize = esize;
+        g_potentialneighbors[*it].elems.resize(nelemstorecv[nreq]*esize,0);
         for(idx_t i=0;i<nelemstorecv[nreq];i++){
           g_potentialneighbors[*it].elems_ltg.insert(std::make_pair(i,elemstorecv[(1+esize)*(maxelemstorecv*nreq+i)]));
           g_potentialneighbors[*it].elems_gtl.insert(std::make_pair(elemstorecv[(1+esize)*(maxelemstorecv*nreq+i)],i));
           for(idx_t j=0;j<esize;j++){
-            g_potentialneighbors[*it].elems[i][j] = elemstorecv[(1+esize)*(maxelemstorecv*nreq+i)+j+1];
+            g_potentialneighbors[*it].get_elems(i,j) = elemstorecv[(1+esize)*(maxelemstorecv*nreq+i)+j+1];
           }
         }
         msgs_recv[ownerofsubmesh[*it]].insert(*it);
@@ -2421,30 +2428,34 @@ void AddElemsAndRenumber(std::vector<submesh> &submeshesowned){
           it!=submeshesowned[k].nodestorecv[*iter].end();
           it++){
         if(submeshesowned[k].nodes_gtl.find(*it)==submeshesowned[k].nodes_gtl.end()){
-          submeshesowned[k].nodes_ltg.insert(std::make_pair(submeshesowned[k].nodes.size(), *it));
-          submeshesowned[k].nodes_gtl.insert(std::make_pair(*it, submeshesowned[k].nodes.size()));
-          submeshesowned[k].nodes.push_back(g_potentialneighbors[*iter].nodes[g_potentialneighbors[*iter].nodes_gtl[*it]]);
+          submeshesowned[k].nodes_ltg.insert(std::make_pair(submeshesowned[k].get_nnodes(), *it));
+          submeshesowned[k].nodes_gtl.insert(std::make_pair(*it, submeshesowned[k].get_nnodes()));
+          for(int kk=0; kk<3; kk++){
+            submeshesowned[k].nodes.push_back(g_potentialneighbors[*iter].get_nodes(g_potentialneighbors[*iter].nodes_gtl[*it],kk));
+          }
         }
       }
       for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
           it!=submeshesowned[k].elemstorecv[*iter].end();
           it++){
         idx_t itglob = g_potentialneighbors[*iter].elems_ltg[*it];
-        submeshesowned[k].elems_ltg.insert(std::make_pair(submeshesowned[k].elems.size(), itglob));
-        submeshesowned[k].elems_gtl.insert(std::make_pair(itglob, submeshesowned[k].elems.size()));
-        submeshesowned[k].elems.push_back(g_potentialneighbors[*iter].elems[*it]);
+        submeshesowned[k].elems_ltg.insert(std::make_pair(submeshesowned[k].get_nelems(), itglob));
+        submeshesowned[k].elems_gtl.insert(std::make_pair(itglob, submeshesowned[k].get_nelems()));
+        for(int kk=0; kk<submeshesowned[k].esize; kk++){
+          submeshesowned[k].elems.push_back(g_potentialneighbors[*iter].get_elems(*it,kk));
+        }
       }
     }
-    submeshesowned[k].nnodes = submeshesowned[k].nodes.size();
-    submeshesowned[k].nelems = submeshesowned[k].elems.size();
+    /* submeshesowned[k].nnodes = submeshesowned[k].get_nnodes(); */
+    /* submeshesowned[k].nelems = submeshesowned[k].get_nelems(); */
 
     //Renumbering
-    submeshesowned[k].renumber_otn.resize(submeshesowned[k].nelems, -1);
-    submeshesowned[k].renumber_nto.resize(submeshesowned[k].nelems, -1);
+    submeshesowned[k].renumber_otn.resize(submeshesowned[k].get_nelems(), -1);
+    submeshesowned[k].renumber_nto.resize(submeshesowned[k].get_nelems(), -1);
     idx_t itloc;
     idx_t ind=0;
     bool norsendorrecv;
-    for(idx_t i=0; i<submeshesowned[k].nelems; i++){
+    for(idx_t i=0; i<submeshesowned[k].get_nelems(); i++){
       norsendorrecv = true;
       for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
           iter!=submeshesowned[k].potentialneighbors.end();
@@ -2566,8 +2577,8 @@ void writeMeshPCGNS_wos(std::vector<submesh> &submeshesowned, idx_t esize, idx_t
   int ne[ownerofsubmesh.size()];
   for(int k=0; k<ownerofsubmesh.size(); k++){
     if(ownerofsubmesh[k] == me){
-      ns[k] = submeshesowned[submeshlocid[k]].nodes.size();
-      ne[k] = submeshesowned[submeshlocid[k]].elems.size();
+      ns[k] = submeshesowned[submeshlocid[k]].get_nnodes();
+      ne[k] = submeshesowned[submeshlocid[k]].get_nelems();
     }
     else{
       ns[k] = 0;
@@ -2631,31 +2642,31 @@ void writeMeshPCGNS_wos(std::vector<submesh> &submeshesowned, idx_t esize, idx_t
     if(ownerofsubmesh[k] == me){
       int kk = submeshlocid[k];
 
-      cgsize_t nnodes=submeshesowned[kk].nodes.size();
+      cgsize_t nnodes=submeshesowned[kk].get_nnodes();
       estart=1; eend=nnodes;
       coord = new double[nnodes];
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][0];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,0);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][1],&estart,&eend,coord)) cgp_error_exit();
 
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][1];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,1);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][2],&estart,&eend,coord)) cgp_error_exit();
 
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][2];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,2);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][3],&estart,&eend,coord)) cgp_error_exit();
 
       delete [] coord;
-      cgsize_t nelems=submeshesowned[kk].elems.size();
+      cgsize_t nelems=submeshesowned[kk].get_nelems();
       estart=1;eend=ne[k];
       elems = new cgsize_t[esize*nelems];
-      for(idx_t i=0; i<submeshesowned[kk].elems.size(); i++){
+      for(idx_t i=0; i<submeshesowned[kk].get_nelems(); i++){
         for(idx_t j=0; j<esize; j++){
-          elems[esize*i + j] = submeshesowned[kk].renumber_nto[submeshesowned[kk].nodes_gtl[submeshesowned[kk].elems[i][j]]]+1;
+          elems[esize*i + j] = submeshesowned[kk].renumber_nto[submeshesowned[kk].nodes_gtl[submeshesowned[kk].get_elems(i,j)]]+1;
         }
       }
       if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();
@@ -2745,8 +2756,8 @@ void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
       for(int k=0; k<submeshesowned.size(); k++){
         /* cgsize_t estart, eend; */
         cgsize_t isize[1][3];
-        isize[0][0]=submeshesowned[k].nodes.size();
-        isize[0][1]=submeshesowned[k].elems.size();
+        isize[0][0]=submeshesowned[k].get_nnodes();
+        isize[0][1]=submeshesowned[k].get_nelems();
         isize[0][2]=0;
         std::stringstream zss;
         zss << "River_" << submeshesowned[k].submeshid;
@@ -2823,10 +2834,10 @@ void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
             if(cg_user_data_write(submeshesowned[k].ud_names[nud-1].c_str())) cg_error_exit();
             cgsize_t dimensions=submeshesowned[k].arrays[nud-1][0].size();
             CGNS_ENUMV(GridLocation_t) location;
-            if(dimensions==submeshesowned[k].nodes.size()){
+            if(dimensions==submeshesowned[k].get_nnodes()){
               location = CGNS_ENUMV(Vertex);
             }
-            if(dimensions==submeshesowned[k].elems.size()){
+            if(dimensions==submeshesowned[k].get_nelems()){
               location = CGNS_ENUMV(CellCenter);
             }
             if(cg_goto(index_file, index_base, zss.str().c_str(), 0, submeshesowned[k].ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
@@ -2862,8 +2873,8 @@ void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
   int ne[ownerofsubmesh.size()];
   for(int k=0; k<ownerofsubmesh.size(); k++){
     if(ownerofsubmesh[k] == me){
-      ns[k] = submeshesowned[submeshlocid[k]].nodes.size();
-      ne[k] = submeshesowned[submeshlocid[k]].elems.size();
+      ns[k] = submeshesowned[submeshlocid[k]].get_nnodes();
+      ne[k] = submeshesowned[submeshlocid[k]].get_nelems();
     }
     else{
       ns[k] = 0;
@@ -2940,32 +2951,32 @@ void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
     if(ownerofsubmesh[k] == me){
       int kk = submeshlocid[k];
 
-      cgsize_t nnodes=submeshesowned[kk].nodes.size();
+      cgsize_t nnodes=submeshesowned[kk].get_nnodes();
       estart=1; eend=nnodes;
       coord = new double[nnodes];
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][0];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,0);
       }
       /* std::cout << index_base << " " << cgzones[k][0] << " " << cgzones[k][1] << " " << estart << " " << eend << std::endl; */
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][1],&estart,&eend,coord)) cgp_error_exit();
 
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][1];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,1);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][2],&estart,&eend,coord)) cgp_error_exit();
 
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][2];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,2);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][3],&estart,&eend,coord)) cgp_error_exit();
 
       delete [] coord;
-      cgsize_t nelems=submeshesowned[kk].elems.size();
+      cgsize_t nelems=submeshesowned[kk].get_nelems();
       estart=1;eend=ne[k];
       elems = new cgsize_t[esize*nelems];
-      for(idx_t i=0; i<submeshesowned[kk].elems.size(); i++){
+      for(idx_t i=0; i<submeshesowned[kk].get_nelems(); i++){
         for(idx_t j=0; j<esize; j++){
-          elems[esize*i + j] = submeshesowned[kk].renumber_nto[submeshesowned[kk].nodes_gtl[submeshesowned[kk].elems[i][j]]]+1;
+          elems[esize*i + j] = submeshesowned[kk].renumber_nto[submeshesowned[kk].nodes_gtl[submeshesowned[kk].get_elems(i,j)]]+1;
         }
       }
       if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();
@@ -3047,8 +3058,8 @@ void writeMeshPCGNS_ch(std::vector<submesh> &submeshesowned, idx_t esize, idx_t 
   int ne[ownerofsubmesh.size()];
   for(int k=0; k<ownerofsubmesh.size(); k++){
     if(ownerofsubmesh[k] == me){
-      ns[k] = submeshesowned[submeshlocid[k]].nodes.size();
-      ne[k] = submeshesowned[submeshlocid[k]].elems.size();
+      ns[k] = submeshesowned[submeshlocid[k]].get_nnodes();
+      ne[k] = submeshesowned[submeshlocid[k]].get_nelems();
     }
     else{
       ns[k] = 0;
@@ -3104,31 +3115,31 @@ void writeMeshPCGNS_ch(std::vector<submesh> &submeshesowned, idx_t esize, idx_t 
     if(ownerofsubmesh[k] == me){
       int kk = submeshlocid[k];
 
-      cgsize_t nnodes=submeshesowned[kk].nodes.size();
+      cgsize_t nnodes=submeshesowned[kk].get_nnodes();
       estart=1; eend=nnodes;
       coord = new double[nnodes];
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][0];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,0);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][1],&estart,&eend,coord)) cgp_error_exit();
 
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][1];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,1);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][2],&estart,&eend,coord)) cgp_error_exit();
 
-      for(idx_t i=0; i<submeshesowned[kk].nodes.size(); i++){
-        coord[i] = submeshesowned[kk].nodes[i][2];
+      for(idx_t i=0; i<submeshesowned[kk].get_nnodes(); i++){
+        coord[i] = submeshesowned[kk].get_nodes(i,2);
       }
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][3],&estart,&eend,coord)) cgp_error_exit();
 
       delete [] coord;
-      cgsize_t nelems=submeshesowned[kk].elems.size();
+      cgsize_t nelems=submeshesowned[kk].get_nelems();
       estart=1;eend=ne[k];
       elems = new cgsize_t[esize*nelems];
-      for(idx_t i=0; i<submeshesowned[kk].elems.size(); i++){
+      for(idx_t i=0; i<submeshesowned[kk].get_nelems(); i++){
         for(idx_t j=0; j<esize; j++){
-          elems[esize*i + j] = submeshesowned[kk].renumber_nto[submeshesowned[kk].nodes_gtl[submeshesowned[kk].elems[i][j]]]+1;
+          elems[esize*i + j] = submeshesowned[kk].renumber_nto[submeshesowned[kk].nodes_gtl[submeshesowned[kk].get_elems(i,j)]]+1;
         }
       }
       if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();

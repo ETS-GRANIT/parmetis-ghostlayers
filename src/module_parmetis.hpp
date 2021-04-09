@@ -34,17 +34,24 @@ struct vector_idx_t_hash {
 
 // Submesh struct so store a sub-domain
 struct submesh{
-  idx_t submeshid; // Number of the sub-domain
-  idx_t nelems, nnodes; 
-  idx_t esize; // Element size (number of vertices of the elements)
+  int submeshid; // Number of the sub-domain
+  /* idx_t nelems, nnodes; */ 
+  int esize; // Element size (number of vertices of the elements)
 
   std::vector<std::vector<real_t> > extents; // Spacial extents
   std::set<idx_t> potentialneighbors; // Set of potential neighbors id
 
   // Main 3 vectors of the sub-domain
-  std::vector<std::vector<idx_t> > elems;
-  std::vector<std::vector<idx_t> > neighbors;
-  std::vector<std::vector<real_t> > nodes;
+  std::vector<real_t> nodes;
+  std::vector<idx_t> elems;
+  std::vector<idx_t> neighbors;
+
+  idx_t get_nnodes(){return nodes.size()/3;};
+  idx_t get_nelems(){return elems.size()/esize;};
+
+  real_t& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
+  idx_t& get_elems(idx_t i, idx_t j){return elems[i*esize+j];};
+  idx_t& get_neighbors(idx_t i, idx_t j){return neighbors[i*esize+j];};
 
   // Sets of boundary elems and nodes
   std::set<idx_t> boundaryelems;
@@ -76,6 +83,8 @@ struct submesh{
   std::vector<std::string>  ud_names;
   std::vector<std::vector<std::string> > ar_names;
   std::vector<std::vector<std::vector<double> > > arrays;
+
+
 
   // Function to add a set of elements to the sub-domain
   void Addelems(idx_t *elems, idx_t offset, idx_t nelems, idx_t esize);
@@ -126,17 +135,17 @@ void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename
 
 void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename, MPI_Comm comm);
 
-void buildBoundaryEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set);
+void buildBoundaryEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set);
 
-void buildEdges(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
+void buildEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
 
-void buildBoundaryFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::set<idx_t> &elems_set);
+void buildBoundaryFaces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::set<idx_t> &elems_set);
 
-void buildFaces(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
+void buildFaces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces);
 
-void buildElemConnectivity2D(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<std::vector<idx_t> > &neighbors);
+void buildElemConnectivity2D(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<idx_t> &neighbors);
 
-void buildElemConnectivity3D(std::vector<std::vector<idx_t> > &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<std::vector<idx_t> > &neighbors);
+void buildElemConnectivity3D(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<idx_t> &neighbors);
 
 void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension);
 
