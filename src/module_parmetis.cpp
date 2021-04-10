@@ -31,6 +31,12 @@ struct potential_neighbors_boundary{
   std::map<idx_t,idx_t> elems_ltg;
   std::map<idx_t,idx_t> nodes_gtl;
   std::map<idx_t,idx_t> nodes_ltg;
+
+  std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
+  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
+  std::vector<idx_t> neighbors;
+
+  bool already_computed(){if(neighbors.size() > 0){return 1;}else{return 0;}};
 };
 
 //Global variable of potential neighbors inner boundary to reduce memory usage
@@ -1790,14 +1796,16 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
           iter!= submeshesowned[k].potentialneighbors.end(); iter++){
 
-        std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> pn_edges;
-        std::vector<idx_t> pn_neighbors(g_potentialneighbors[*iter].get_nelems()*esize,-1);
+        if( not g_potentialneighbors[*iter].already_computed() ){
 
-        buildEdges(esize,g_potentialneighbors[*iter].elems, pn_edges);
-        buildElemConnectivity2D(esize,g_potentialneighbors[*iter].elems, pn_edges, pn_neighbors);
+          g_potentialneighbors[*iter].neighbors.resize(g_potentialneighbors[*iter].get_nelems()*esize,-1);
+          buildEdges(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].edges);
+          buildElemConnectivity2D(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].edges, g_potentialneighbors[*iter].neighbors);
+        }
+
 
         std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>::iterator it_edges;
-        for(it_edges=pn_edges.begin();it_edges!=pn_edges.end();it_edges++){
+        for(it_edges=g_potentialneighbors[*iter].edges.begin();it_edges!=g_potentialneighbors[*iter].edges.end();it_edges++){
           if(tmp_boundary_edges.find(it_edges->first)!=tmp_boundary_edges.end()){
 
             //Add elem to recv
@@ -1897,8 +1905,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           tmpnewboundaryelems = submeshesowned[k].elemstorecv[*iter];
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
             for(idx_t j=0;j<esize;j++){
-              if(pn_neighbors[*it*esize+j] != -1){
-                submeshesowned[k].elemstorecv[*iter].insert(pn_neighbors[*it*esize+j]);
+              if(g_potentialneighbors[*iter].neighbors[*it*esize+j] != -1){
+                submeshesowned[k].elemstorecv[*iter].insert(g_potentialneighbors[*iter].neighbors[*it*esize+j]);
                 //Add boundarynodes
                 for(idx_t j=0; j<esize; j++){
                   submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
@@ -1946,15 +1954,16 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
           iter!= submeshesowned[k].potentialneighbors.end(); iter++){
 
-        std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> pn_faces;
-        std::vector<idx_t> pn_neighbors(g_potentialneighbors[*iter].get_nelems()*esize,-1);
+        if( not g_potentialneighbors[*iter].already_computed() ){
+          g_potentialneighbors[*iter].neighbors.resize(g_potentialneighbors[*iter].get_nelems()*esize,-1);
 
-        buildFaces(esize,g_potentialneighbors[*iter].elems, pn_faces);
-        buildElemConnectivity3D(esize,g_potentialneighbors[*iter].elems, pn_faces, pn_neighbors);
+          buildFaces(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].faces);
+          buildElemConnectivity3D(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].faces, g_potentialneighbors[*iter].neighbors);
+        }
 
         std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>::iterator it_faces;
 
-        for(it_faces=pn_faces.begin();it_faces!=pn_faces.end();it_faces++){
+        for(it_faces=g_potentialneighbors[*iter].faces.begin();it_faces!=g_potentialneighbors[*iter].faces.end();it_faces++){
           if(tmp_boundary_faces.find(it_faces->first)!=tmp_boundary_faces.end()){
 
             //Add elem to recv
@@ -1976,6 +1985,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
           }
         }
+
         //RECV If method=1 add cells that have only a point in the boundary points
         if(method==1){
           for(idx_t i=0;i<g_potentialneighbors[*iter].get_nelems();i++){
@@ -2055,8 +2065,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           tmpnewboundaryelems = submeshesowned[k].elemstorecv[*iter];
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
             for(idx_t j=0;j<esize;j++){
-              if(pn_neighbors[*it*esize+j] != -1){
-                submeshesowned[k].elemstorecv[*iter].insert(pn_neighbors[*it*esize+j]);
+              if(g_potentialneighbors[*iter].neighbors[*it*esize+j] != -1){
+                submeshesowned[k].elemstorecv[*iter].insert(g_potentialneighbors[*iter].neighbors[*it*esize+j]);
                 //Add boundarynodes
                 for(idx_t j=0; j<esize; j++){
                   submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
