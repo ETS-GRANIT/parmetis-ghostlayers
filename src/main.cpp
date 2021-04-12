@@ -106,6 +106,10 @@ int main(int argc, char *argv[]) {
   Buildconnectivity(submeshesowned, dim);
   Findboundaryfromconnectivity(submeshesowned, method, numlayers);
   Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
+  ShareboundaryFixPotentialNeighbors(submeshesowned, ownerofsubmesh, comm);
+  for(int k=0; k<submeshesowned.size(); k++){
+    std::cout << submeshesowned[k].submeshid << " " << submeshesowned[k].potentialneighbors_extents.size() << " " << submeshesowned[k].potentialneighbors.size() << std::endl;
+  }
   Shareboundary(submeshesowned, ownerofsubmesh, comm);
   FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers);
   AddElemsAndRenumber(submeshesowned);
@@ -122,20 +126,20 @@ int main(int argc, char *argv[]) {
   /* std::cout << me << " " << vmrss << std::endl; */
 
   auto tio7 = std::chrono::high_resolution_clock::now();
-  writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh);//multiple files
+  /* writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh);//multiple files */
   auto tio8 = std::chrono::high_resolution_clock::now();
 
   auto tio5 = std::chrono::high_resolution_clock::now();
-  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file
+  /* writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file */
   auto tio6 = std::chrono::high_resolution_clock::now();
 
   auto tio9 = std::chrono::high_resolution_clock::now();
-  writeMeshPCGNS_wos(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
+  /* writeMeshPCGNS_wos(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns */
   auto tio10 = std::chrono::high_resolution_clock::now();
 
   auto tio11 = std::chrono::high_resolution_clock::now();
   /* writeMeshPCGNS(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns + single NULL*/
-  writeMeshPCGNS_ch(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
+  /* writeMeshPCGNS_ch(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns */
   auto tio12 = std::chrono::high_resolution_clock::now();
 
   double duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count()/1.0e6;

@@ -32,6 +32,33 @@ struct vector_idx_t_hash {
   } 
 }; 
 
+struct potential_neighbors_boundary{
+  int esize;
+
+  std::vector<real_t> nodes;
+  std::vector<idx_t> elems;
+
+  idx_t get_nnodes(){return nodes.size()/3;};
+  idx_t get_nelems(){return elems.size()/esize;};
+
+  real_t& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
+  idx_t& get_elems(idx_t i, idx_t j){return elems[i*esize+j];};
+
+  //Numbering tables : gtl = global to local, ltg = local to global
+  std::map<idx_t,idx_t> elems_gtl;
+  std::map<idx_t,idx_t> elems_ltg;
+  std::map<idx_t,idx_t> nodes_gtl;
+  std::map<idx_t,idx_t> nodes_ltg;
+
+  std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
+  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
+  std::vector<idx_t> neighbors;
+
+  bool already_computed(){if(neighbors.size() > 0){return 1;}else{return 0;}};
+};
+
+//Global variable of potential neighbors inner boundary to reduce memory usage
+extern std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 
 // Submesh struct so store a sub-domain
 struct submesh{
@@ -40,7 +67,8 @@ struct submesh{
   int esize; // Element size (number of vertices of the elements)
 
   std::vector<std::vector<real_t> > extents; // Spacial extents
-  std::set<idx_t> potentialneighbors; // Set of potential neighbors id
+  std::set<idx_t> potentialneighbors_extents; // Set of extents computed potential neighbors id
+  std::set<idx_t> potentialneighbors; // Set of potential neighbors id fixed by looking for same nodes
 
   // Main 3 vectors of the sub-domain
   std::vector<real_t> nodes;
@@ -57,6 +85,7 @@ struct submesh{
   // Sets of boundary elems and nodes
   std::set<idx_t> boundaryelems;
   std::set<idx_t> boundarynodes;
+  std::set<idx_t> l1_boundarynodes;
   std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> boundary_edges;
   std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> boundary_faces;
 
@@ -157,6 +186,8 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
 void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimension, idx_t method, idx_t numlayers);
 
 void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm);
+
+void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm);
 
 void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshesowned, MPI_Comm comm);
 

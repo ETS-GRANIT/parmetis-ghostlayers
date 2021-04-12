@@ -12,32 +12,6 @@
 
 #include "module_parmetis.hpp"
 
-
-struct potential_neighbors_boundary{
-  int esize;
-
-  std::vector<real_t> nodes;
-  std::vector<idx_t> elems;
-
-  idx_t get_nnodes(){return nodes.size()/3;};
-  idx_t get_nelems(){return elems.size()/esize;};
-
-  real_t& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
-  idx_t& get_elems(idx_t i, idx_t j){return elems[i*esize+j];};
-
-  //Numbering tables : gtl = global to local, ltg = local to global
-  std::map<idx_t,idx_t> elems_gtl;
-  std::map<idx_t,idx_t> elems_ltg;
-  std::map<idx_t,idx_t> nodes_gtl;
-  std::map<idx_t,idx_t> nodes_ltg;
-
-  std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
-  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
-  std::vector<idx_t> neighbors;
-
-  bool already_computed(){if(neighbors.size() > 0){return 1;}else{return 0;}};
-};
-
 //Global variable of potential neighbors inner boundary to reduce memory usage
 std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 
@@ -1711,6 +1685,8 @@ void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t me
           if(submeshesowned[k].get_neighbors(i,j) == -1){
             submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(i,j));
             submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(i,(j+1)%submeshesowned[k].esize));
+            submeshesowned[k].l1_boundarynodes.insert(submeshesowned[k].get_elems(i,j));
+            submeshesowned[k].l1_boundarynodes.insert(submeshesowned[k].get_elems(i,(j+1)%submeshesowned[k].esize));
           }
         }
         /* } */
@@ -2105,6 +2081,167 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
 }
 
+void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm){
+
+  idx_t nprocs, me;
+  MPI_Status stat;
+  MPI_Status *statSend, *statRecv;
+  MPI_Request *requestSendPtr, *requestRecvPtr;
+
+  MPI_Comm_size(comm,&nprocs);
+  MPI_Comm_rank(comm,&me);
+
+  std::vector<std::set<idx_t> > msgs_send(nprocs);
+  std::vector<std::set<idx_t> > msgs_recv(nprocs);
+
+  idx_t esize=submeshesowned[0].esize;
+
+
+  std::set<idx_t>::iterator it;
+  idx_t iloc(0);
+  idx_t idum;
+
+  //Construct submeshlocid (reverse lookup of mesh id)
+  std::map<idx_t, idx_t> submeshlocid;
+  for(idx_t i=0;i<submeshesowned.size();i++){
+    submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i));
+  }
+
+  //Find max number of nodes and elems to send
+  idx_t maxnodestosend(0), maxelemstosend(0);
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    maxnodestosend = std::max(maxnodestosend, (idx_t) submeshesowned[k].l1_boundarynodes.size());
+  }
+
+  idx_t *nodestosend = new idx_t[maxnodestosend*submeshesowned.size()];
+
+  //Compute total number of messages/request
+  idx_t ntotreq_send=0;
+  idx_t ntotreq_recv=0;
+  idx_t nreq=0;
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
+      if(ownerofsubmesh[*it]!=me && (msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0)){
+        msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+        ntotreq_send++;
+      }
+      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
+        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        ntotreq_recv++;
+      }
+    }
+  }
+
+  requestSendPtr = new MPI_Request[ntotreq_send];
+
+  //Construc contiguous vector of nodes  to send
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    iloc=0;
+    for(it=submeshesowned[k].l1_boundarynodes.begin(); it!=submeshesowned[k].l1_boundarynodes.end(); it++){
+      nodestosend[k*maxnodestosend+iloc] = (idx_t) *it;
+      iloc++;
+    }
+  }
+
+
+  //Clear msgsend msgs recv
+  for(idx_t pr=0;pr<nprocs;pr++){
+    msgs_send[pr].clear();
+    msgs_recv[pr].clear();
+  }
+
+  //Send Nodes vector
+  nreq=0;
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
+      if(msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0){
+        if(ownerofsubmesh[*it]!=me){
+          MPI_Isend(&nodestosend[maxnodestosend*k], submeshesowned[k].l1_boundarynodes.size(), IDX_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
+          nreq++;
+          msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+        }
+        else{
+          //Check for node in common, if found add to potentialnieghbors
+          idx_t k2 = submeshlocid[*it];
+          for(idx_t i=0; i<submeshesowned[k].l1_boundarynodes.size(); i++){
+            if(submeshesowned[k2].l1_boundarynodes.count(nodestosend[maxnodestosend*k+i]) != 0){
+              /* submeshesowned[k].potentialneighbors.insert(*it); */
+              submeshesowned[k2].potentialneighbors.insert(submeshesowned[k].submeshid);
+              break;
+            }
+          }
+
+        }
+      }
+    }
+  }
+
+  //Probe to get sizes
+  idx_t *nnodestorecv = new idx_t[ntotreq_recv];
+  idx_t maxnodestorecv=0;
+
+  nreq=0;
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
+      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
+        MPI_Probe(ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+        MPI_Get_count(&stat,IDX_T,&nnodestorecv[nreq]);
+        maxnodestorecv = std::max(maxnodestorecv,nnodestorecv[nreq]);
+        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        nreq++;
+      }
+    }
+  }
+
+  idx_t *nodestorecv = new idx_t[maxnodestorecv*ntotreq_recv];
+
+  //Clear msgsend msgs recv
+  for(idx_t pr=0;pr<nprocs;pr++){
+    msgs_send[pr].clear();
+    msgs_recv[pr].clear();
+  }
+
+  std::vector<std::map<idx_t, idx_t> > msgs_req_recv(nprocs);
+
+  //IRecv nodes vector
+  nreq=0;
+  for(idx_t k=0; k<submeshesowned.size(); k++){
+    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
+      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
+        MPI_Recv(&nodestorecv[nreq*maxnodestorecv], nnodestorecv[nreq], IDX_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+
+        //Check for node in common, if found add to potentialnieghbors
+        for(idx_t i=0; i<nnodestorecv[nreq]; i++){
+          if(submeshesowned[k].l1_boundarynodes.count(nodestorecv[nreq*maxnodestorecv+i]) != 0){
+            submeshesowned[k].potentialneighbors.insert(*it);
+            break;
+          }
+        }
+        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        msgs_req_recv[ownerofsubmesh[*it]].insert({*it,nreq});
+        nreq++;
+      }
+      else if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==1){
+        //Find what req the msg came with
+        idx_t loc_req=msgs_req_recv[ownerofsubmesh[*it]][*it];
+        //Check for node in common, if found add to potentialnieghbors
+        for(idx_t i=0; i<nnodestorecv[loc_req]; i++){
+          if(submeshesowned[k].l1_boundarynodes.count(nodestorecv[loc_req*maxnodestorecv+i]) != 0){
+            submeshesowned[k].potentialneighbors.insert(*it);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  MPI_Waitall(ntotreq_send, requestSendPtr, statSend);
+
+  delete [] nodestosend;
+  delete [] nodestorecv;
+  delete [] nnodestorecv;
+}
+
 void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm){
 
   idx_t nprocs, me;
@@ -2418,7 +2555,7 @@ void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshes
         interz = interz or ((allextents[submeshesowned[k].submeshid*6+4]<=allextents[p*6+4]+eps) and (allextents[submeshesowned[k].submeshid*6+5]>=allextents[p*6+5]-eps));
 
         if((interx and intery) and interz){
-          submeshesowned[k].potentialneighbors.insert(p);
+          submeshesowned[k].potentialneighbors_extents.insert(p);
         }
       }
     }
