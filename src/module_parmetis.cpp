@@ -12,7 +12,6 @@
 
 #include "module_parmetis.hpp"
 
-#define CG_FILE_PHDF5 4
 
 struct potential_neighbors_boundary{
   int esize;
@@ -42,7 +41,7 @@ struct potential_neighbors_boundary{
 //Global variable of potential neighbors inner boundary to reduce memory usage
 std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 
-void submesh::computemyextents(idx_t nsubmeshes){
+void submesh::computemyextents(){
   extents.resize(3,std::vector<real_t>(2, 0.));
 
   extents[0][0] = nodes[0*3+0];
@@ -939,7 +938,7 @@ void writeMeshCGNS2(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
             cgsize_t bcnodes[submeshesowned[k].boundary_conditions[bc].size()];
             cgsize_t nbc=0;
             for(std::set<idx_t>::iterator it=submeshesowned[k].boundary_conditions[bc].begin();
-              it!=submeshesowned[k].boundary_conditions[bc].end();it++){
+                it!=submeshesowned[k].boundary_conditions[bc].end();it++){
               bcnodes[nbc] = submeshesowned[k].nodes_gtl[*it] ;
               nbc++;
             }
@@ -1101,11 +1100,11 @@ void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
       /* indrenum = i; */
       indrenum = submeshesowned[k].renumber_nto[i];
       if(indrenum<nElems-totelemsrecv){
-      outFile << esize << " ";
-      for(idx_t p=0; p<esize; p++){
-        outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(indrenum,p)] << " ";
-      }
-      outFile << std::endl;
+        outFile << esize << " ";
+        for(idx_t p=0; p<esize; p++){
+          outFile << submeshesowned[k].nodes_gtl[submeshesowned[k].get_elems(indrenum,p)] << " ";
+        }
+        outFile << std::endl;
       }
     }
 
@@ -1789,8 +1788,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
   for(idx_t k; k<submeshesowned.size(); k++){
     //Build my boundary connectivity
     if(dimension==2){
-      std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> tmp_boundary_edges;
-      buildBoundaryEdges(esize,submeshesowned[k].elems, tmp_boundary_edges, submeshesowned[k].boundaryelems);
+      buildBoundaryEdges(esize,submeshesowned[k].elems, submeshesowned[k].boundary_edges, submeshesowned[k].boundaryelems);
 
       std::set<idx_t>::iterator iter;
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
@@ -1806,7 +1804,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>::iterator it_edges;
         for(it_edges=g_potentialneighbors[*iter].edges.begin();it_edges!=g_potentialneighbors[*iter].edges.end();it_edges++){
-          if(tmp_boundary_edges.find(it_edges->first)!=tmp_boundary_edges.end()){
+          if(submeshesowned[k].boundary_edges.find(it_edges->first)!=submeshesowned[k].boundary_edges.end()){
 
             //Add elem to recv
             idx_t elem=it_edges->second.first;
@@ -1816,7 +1814,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             submeshesowned[k].nodestorecv[*iter].insert(it_edges->first.second);
 
             //Add elem to send
-            elem=tmp_boundary_edges[it_edges->first].first;
+            elem=submeshesowned[k].boundary_edges[it_edges->first].first;
             submeshesowned[k].elemstosend[*iter].insert(elem);
             //Add boundarynodes to send
             submeshesowned[k].nodestosend[*iter].insert(it_edges->first.first);
@@ -1946,9 +1944,8 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
       }
     }
     if(dimension==3){
-      std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> tmp_boundary_faces;
+      buildBoundaryFaces(esize,submeshesowned[k].elems, submeshesowned[k].boundary_faces, submeshesowned[k].boundaryelems);
       idx_t faceSize=3;//Tetrahedron
-      buildBoundaryFaces(esize,submeshesowned[k].elems, tmp_boundary_faces, submeshesowned[k].boundaryelems);
 
       std::set<idx_t>::iterator iter;
       for(iter=submeshesowned[k].potentialneighbors.begin(); 
@@ -1964,7 +1961,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
         std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>::iterator it_faces;
 
         for(it_faces=g_potentialneighbors[*iter].faces.begin();it_faces!=g_potentialneighbors[*iter].faces.end();it_faces++){
-          if(tmp_boundary_faces.find(it_faces->first)!=tmp_boundary_faces.end()){
+          if(submeshesowned[k].boundary_faces.find(it_faces->first)!=submeshesowned[k].boundary_faces.end()){
 
             //Add elem to recv
             idx_t elem=it_faces->second.first;
@@ -1975,7 +1972,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
             }
 
             //Add elem to send
-            elem=tmp_boundary_faces[it_faces->first].first;
+            elem=submeshesowned[k].boundary_faces[it_faces->first].first;
             submeshesowned[k].elemstosend[*iter].insert(elem);
             //Add boundarynodes to send
             for(idx_t p=0; p<faceSize; p++){
@@ -2140,6 +2137,7 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
     maxnodestosend = std::max(maxnodestosend, (idx_t) submeshesowned[k].boundarynodes.size());
     maxelemstosend = std::max(maxelemstosend, (idx_t) submeshesowned[k].boundaryelems.size());
   }
+
   real_t *nodestosend = new real_t[maxnodestosend*4*submeshesowned.size()];
   idx_t *elemstosend = new idx_t[maxelemstosend*(1+esize)*submeshesowned.size()];
 
@@ -2381,7 +2379,7 @@ void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshes
 
   //Compute each submesh extents
   for(idx_t k=0; k<submeshesowned.size(); k++){
-    submeshesowned[k].computemyextents(nsubmeshes);
+    submeshesowned[k].computemyextents();
     allextents[submeshesowned[k].submeshid*3*2] = submeshesowned[k].extents[0][0];
     allextents[submeshesowned[k].submeshid*3*2 + 1] = submeshesowned[k].extents[0][1];
     allextents[submeshesowned[k].submeshid*3*2 + 2] = submeshesowned[k].extents[1][0];
@@ -2826,7 +2824,7 @@ void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
             cgsize_t bcnodes[submeshesowned[k].boundary_conditions[bc].size()];
             cgsize_t nbc=0;
             for(std::set<idx_t>::iterator it=submeshesowned[k].boundary_conditions[bc].begin();
-              it!=submeshesowned[k].boundary_conditions[bc].end();it++){
+                it!=submeshesowned[k].boundary_conditions[bc].end();it++){
               bcnodes[nbc] = submeshesowned[k].nodes_gtl[*it] ;
               nbc++;
             }
@@ -2937,7 +2935,7 @@ void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim
     isize[0][1]=ne[k];
     isize[0][2]=0;
     /* if(cg_zone_write(index_file,index_base,zms[k].c_str(),*isize,CGNS_ENUMV(Unstructured),&cgzones[k][0]) ) cg_error_exit(); */
-  /* tmpl if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error(); */
+    /* tmpl if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error(); */
     /* if(cg_zone_read(index_file,index_base,&zn,dumn,*isize)) cg_error_exit(); */
     /* if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit(); */
     if(cgp_coord_write(index_file,index_base,cgzones[k][0],CGNS_ENUMV(RealDouble),"CoordinateX",&cgzones[k][1])) cgp_error_exit();

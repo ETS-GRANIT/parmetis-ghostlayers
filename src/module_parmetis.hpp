@@ -32,6 +32,7 @@ struct vector_idx_t_hash {
   } 
 }; 
 
+
 // Submesh struct so store a sub-domain
 struct submesh{
   int submeshid; // Number of the sub-domain
@@ -56,6 +57,8 @@ struct submesh{
   // Sets of boundary elems and nodes
   std::set<idx_t> boundaryelems;
   std::set<idx_t> boundarynodes;
+  std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> boundary_edges;
+  std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> boundary_faces;
 
   // Renumbering vectors of the elements
   std::vector<idx_t> renumber_otn; // otn = old_to_new
@@ -93,7 +96,7 @@ struct submesh{
   bool isBoundary(idx_t ielem);
 
   // Function to compute the sub-domain spacial extents
-  void computemyextents(idx_t nsubmeshes);
+  void computemyextents();
 };
 
 void Computesubmeshownership(idx_t nsubmeshes, idx_t &nsubmeshesowned, std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm);

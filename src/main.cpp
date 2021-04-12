@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 
   //ParMetis variables
   idx_t *elmdist, *eptr, *eind, *part;
-  idx_t edgecut(-1), ncon(1), ncommonnodes(2), wgtflag(0), numflag(0), options(0);
+  idx_t edgecut(-1), ncon(1), ncommonnodes(2), wgtflag(0), numflag(0);
   idx_t esize, dim; //elemsize (number of nodes) and dimension (2D or 3D) to be read
   real_t *tpwgts, *ubvec;
 
@@ -56,9 +56,11 @@ int main(int argc, char *argv[]) {
 
   //Read the element mesh file and construct all the vectors needed by parmetis
   /* ParallelReadMesh(elmdist, eptr, eind, part, esize, dim, numberingstart, elemsfile, comm); */
+  MPI_Barrier(comm);
   auto tio01 = std::chrono::high_resolution_clock::now();
   ParallelReadMeshCGNS(elmdist, eptr, eind, part, esize, dim, numberingstart, basename, comm);
   auto tio02 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
   assert(dim==2 or dim==3);
   if(dim==2){
@@ -68,11 +70,14 @@ int main(int argc, char *argv[]) {
     assert(esize==4); //Only tet for 3D
   }
 
-  auto t1 = std::chrono::high_resolution_clock::now();
-  ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, &options, &edgecut, part, &comm);
-  auto t2 = std::chrono::high_resolution_clock::now();
-
   MPI_Barrier(comm);
+  idx_t options[METIS_NOPTIONS];
+  options[METIS_OPTION_CONTIG] = 1;
+  auto t1 = std::chrono::high_resolution_clock::now();
+  ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &nsubmeshes, tpwgts, ubvec, options, &edgecut, part, &comm);
+  auto t2 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
+
 
   idx_t nsubmeshesowned;
   std::vector<submesh> submeshesowned;
@@ -80,10 +85,12 @@ int main(int argc, char *argv[]) {
 
   delete [] eptr;
 
+  MPI_Barrier(comm);
   auto t3 = std::chrono::high_resolution_clock::now();
   Computesubmeshownership(nsubmeshes, nsubmeshesowned, submeshesowned, ownerofsubmesh, comm);
   Gathersubmeshes(elmdist, eind, part, esize, submeshesowned, ownerofsubmesh, comm);
   auto t4 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
   delete [] eind;
   delete [] part;
@@ -94,6 +101,7 @@ int main(int argc, char *argv[]) {
   auto tio2 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
+  MPI_Barrier(comm);
   auto t5 = std::chrono::high_resolution_clock::now();
   Buildconnectivity(submeshesowned, dim);
   Findboundaryfromconnectivity(submeshesowned, method, numlayers);
@@ -110,22 +118,24 @@ int main(int argc, char *argv[]) {
   auto tio4 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
+  get_memory_usage_kb(&vmrss, &vmsize);
+  /* std::cout << me << " " << vmrss << std::endl; */
+
   auto tio7 = std::chrono::high_resolution_clock::now();
   writeMeshCGNS1(submeshesowned, esize, dim, ownerofsubmesh);//multiple files
   auto tio8 = std::chrono::high_resolution_clock::now();
 
   auto tio5 = std::chrono::high_resolution_clock::now();
-  /* writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file */
+  writeMeshCGNS2(submeshesowned, esize, dim, ownerofsubmesh); //1 file
   auto tio6 = std::chrono::high_resolution_clock::now();
 
   auto tio9 = std::chrono::high_resolution_clock::now();
-  /* writeMeshPCGNS_wos(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns */
-
-  writeMeshPCGNS_ch(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
+  writeMeshPCGNS_wos(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
   auto tio10 = std::chrono::high_resolution_clock::now();
 
   auto tio11 = std::chrono::high_resolution_clock::now();
-  /* writeMeshPCGNS(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns + single */
+  /* writeMeshPCGNS(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns + single NULL*/
+  writeMeshPCGNS_ch(submeshesowned, esize, dim, ownerofsubmesh);//single file pcgns
   auto tio12 = std::chrono::high_resolution_clock::now();
 
   double duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count()/1.0e6;
@@ -139,7 +149,8 @@ int main(int argc, char *argv[]) {
   double duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count()/1.0e6;
   double duration9 = std::chrono::duration_cast<std::chrono::microseconds>(tio12-tio11).count()/1.0e6;
   
-  get_memory_usage_kb(&vmrss, &vmsize);
+
+  /* std::cout << std::setfill(' ') << std::setw(6) << me << " " << std::setfill(' ') << vmrss << " " << duration1 << " " <<std::setfill(' ') << (duration2+duration3) << " " <<std::setfill(' ') << (duration04+duration4+duration5) <<std::setfill(' ') << std::endl; */
 
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -158,9 +169,11 @@ int main(int argc, char *argv[]) {
 
   MPI_Barrier(MPI_COMM_WORLD);
 
+
   if(me==0){
+    std::cout << " Info : ParMETIS GLAS Reading CGNS_Single  CGNS_Multi_files PCGNS_Single Hybrid" << std::endl;
     std::cout << std::setfill(' ') << std::setw(5) << "Temps : " << nprocs << " " << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs <<  " "  << duration8/nprocs << " " << duration9/nprocs << std::endl;
-    std::cout << "Memory usage : " << vmrss << " " << vmrss/nprocs << std::endl;
+    std::cout << "Memory usage : " << nprocs << " " << vmrss << " " << vmrss/nprocs << std::endl;
   }
 
   MPI_Finalize();
