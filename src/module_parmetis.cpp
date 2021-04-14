@@ -14,7 +14,7 @@
 //Global variable of potential neighbors inner boundary to reduce memory usage
 std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 
-void submesh::computemyextents(){
+void partition::compute_extents(){
   extents.resize(3,std::vector<real_t>(2, 0.));
 
   extents[0][0] = nodes[0*3+0];
@@ -39,14 +39,14 @@ void submesh::computemyextents(){
 
 }
 
-bool submesh::isBoundary(idx_t ielem){
+bool partition::is_boundary(idx_t ielem){
   for(idx_t i=0; i<esize; i++){
     if(neighbors[ielem*esize+i] == -1) return(1);
   }
   return(0);
 }
 
-void submesh::Addelems(idx_t *newelems, idx_t offset, idx_t nnewelems, idx_t newesize){
+void partition::add_elems(idx_t *newelems, idx_t offset, idx_t nnewelems, idx_t newesize){
   esize = newesize; //should'nt change
   int nelems = get_nelems() + nnewelems;
   std::vector<idx_t> tmpelems(esize*nnewelems, 0);
@@ -62,43 +62,43 @@ void submesh::Addelems(idx_t *newelems, idx_t offset, idx_t nnewelems, idx_t new
   elems.insert(elems.end(), tmpelems.begin(), tmpelems.end());
 }
 
-void Computesubmeshownership(idx_t nsubmeshes, idx_t &nsubmeshesowned, std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm){
+void compute_partition_ownership(idx_t ntotparts, idx_t &ntotpartsowned, std::vector<partition> &parts, std::vector<idx_t> &ownerofpartition, MPI_Comm comm){
   idx_t nprocs, me;
   MPI_Comm_size(comm,&nprocs);
   MPI_Comm_rank(comm,&me);
 
-  //Compute the list of partition to ba handled by me
-  idx_t firstsubmeshid;
-  idx_t q=nsubmeshes/nprocs;
-  idx_t r=nsubmeshes-q*nprocs;
+  //Compute the list of epartition to ba handled by me
+  idx_t firstpartitionid;
+  idx_t q=ntotparts/nprocs;
+  idx_t r=ntotparts-q*nprocs;
 
-  ownerofsubmesh.resize(nsubmeshes);
+  ownerofpartition.resize(ntotparts);
 
-  idx_t nsubmeshesofp;
+  idx_t ntotpartsofp;
   for(idx_t p=0; p<nprocs; p++){
     if(p<r){
-      nsubmeshesofp = q+1;
-      firstsubmeshid = p*(q+1);
+      ntotpartsofp = q+1;
+      firstpartitionid = p*(q+1);
     }
     else{
-      nsubmeshesofp = q;
-      firstsubmeshid = p*q + r;
+      ntotpartsofp = q;
+      firstpartitionid = p*q + r;
     }
 
-    for(idx_t k=0;k<nsubmeshesofp;k++){
-      ownerofsubmesh[k+firstsubmeshid] = p;
+    for(idx_t k=0;k<ntotpartsofp;k++){
+      ownerofpartition[k+firstpartitionid] = p;
     }
     if(me==p){
-      nsubmeshesowned = nsubmeshesofp;
-      submeshesowned.resize(nsubmeshesowned);
-      for(idx_t p=0;p<nsubmeshesowned;p++){
-        submeshesowned[p].submeshid = p+firstsubmeshid; 
+      ntotpartsowned = ntotpartsofp;
+      parts.resize(ntotpartsowned);
+      for(idx_t p=0;p<ntotpartsowned;p++){
+        parts[p].partitionid = p+firstpartitionid; 
       }
     }
   }
 }
 
-void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t esize, std::vector<submesh> &submeshesowned, std::vector<idx_t> const ownerofsubmesh, MPI_Comm comm){
+void gather_partitions(idx_t*& elmdist, idx_t*& eind, idx_t*& epart, const idx_t esize, std::vector<partition> &parts, std::vector<idx_t> const ownerofpartition, MPI_Comm comm){
 
   std::stringstream line;
   idx_t nprocs, me;
@@ -110,70 +110,70 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
 
   idx_t nelems = elmdist[me+1]-elmdist[me];
 
-  //Generate submeshes
+  //Generate parts
   std::map<idx_t, idx_t> iter;
-  std::map<idx_t, idx_t*> submesheselems; //Needs to be properly freed
-  std::map<idx_t, idx_t> submeshessizes;
+  std::map<idx_t, idx_t*> partselems; //Needs to be properly freed
+  std::map<idx_t, idx_t> partssizes;
 
   for(idx_t i=0;i<nelems;i++){
-    if(submeshessizes.find(part[i]) == submeshessizes.end()){
-      submeshessizes.insert(std::make_pair(part[i], 0));
+    if(partssizes.find(epart[i]) == partssizes.end()){
+      partssizes.insert(std::make_pair(epart[i], 0));
     }
-    submeshessizes[part[i]] += 1;
+    partssizes[epart[i]] += 1;
   }
 
   for(idx_t i=0;i<nelems;i++){
-    if(submesheselems.find(part[i]) == submesheselems.end()){
-      submesheselems.insert(std::make_pair(part[i], new idx_t[((esize+1)*submeshessizes[part[i]])]));
-      iter.insert(std::make_pair(part[i],0));
+    if(partselems.find(epart[i]) == partselems.end()){
+      partselems.insert(std::make_pair(epart[i], new idx_t[((esize+1)*partssizes[epart[i]])]));
+      iter.insert(std::make_pair(epart[i],0));
     }
-    submesheselems[part[i]][iter[part[i]]*(esize+1)] = elmdist[me]+i;
+    partselems[epart[i]][iter[epart[i]]*(esize+1)] = elmdist[me]+i;
     for(idx_t j=0;j<esize;j++){
-      submesheselems[part[i]][iter[part[i]]*(esize+1)+j+1] = eind[esize*i+j];
+      partselems[epart[i]][iter[epart[i]]*(esize+1)+j+1] = eind[esize*i+j];
     }
-    iter[part[i]] += 1;
+    iter[epart[i]] += 1;
   }
 
-  //Communicate the size of each submesh owned
-  idx_t ntotalsubmeshes = ownerofsubmesh.size();
-  idx_t *gsubmeshessizes = new idx_t[(ntotalsubmeshes)*nprocs];
+  //Communicate the size of each partition owned
+  idx_t ntotalparts = ownerofpartition.size();
+  idx_t *gpartssizes = new idx_t[(ntotalparts)*nprocs];
 
-  for(idx_t i=0;i<ntotalsubmeshes*nprocs;i++){
-    gsubmeshessizes[i] = 0;
+  for(idx_t i=0;i<ntotalparts*nprocs;i++){
+    gpartssizes[i] = 0;
   }
 
-  for(idx_t i=0;i<ntotalsubmeshes;i++){
-    if(submesheselems.find(i) == submesheselems.end()){
-      gsubmeshessizes[me*ntotalsubmeshes+i] = 0;
+  for(idx_t i=0;i<ntotalparts;i++){
+    if(partselems.find(i) == partselems.end()){
+      gpartssizes[me*ntotalparts+i] = 0;
     }
     else{
-      gsubmeshessizes[me*ntotalsubmeshes+i] = submeshessizes[i];
+      gpartssizes[me*ntotalparts+i] = partssizes[i];
     }
   } 
 
-  MPI_Allgather((void *)(gsubmeshessizes+me*ntotalsubmeshes), ntotalsubmeshes, IDX_T, (void *)gsubmeshessizes, ntotalsubmeshes, IDX_T, comm);
+  MPI_Allgather((void *)(gpartssizes+me*ntotalparts), ntotalparts, IDX_T, (void *)gpartssizes, ntotalparts, IDX_T, comm);
 
-  std::map<idx_t, idx_t> submeshlocid;
-  for(idx_t i=0;i<submeshesowned.size();i++){
-    submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i));
+  std::map<idx_t, idx_t> partitionlocid;
+  for(idx_t i=0;i<parts.size();i++){
+    partitionlocid.insert(std::make_pair(parts[i].partitionid, i));
   }
 
   idx_t nSendRequest(0);
-  for(idx_t i=0;i<ntotalsubmeshes;i++){
-    if(gsubmeshessizes[me*ntotalsubmeshes+i] > 0){
-      if(ownerofsubmesh[i]!=me){
+  for(idx_t i=0;i<ntotalparts;i++){
+    if(gpartssizes[me*ntotalparts+i] > 0){
+      if(ownerofpartition[i]!=me){
         nSendRequest+=1;
       }
     }
   } 
 
   idx_t nRecvRequest(0), maxRecv(0);
-  for(idx_t i=0;i<ntotalsubmeshes;i++){
-    if(ownerofsubmesh[i]==me){
+  for(idx_t i=0;i<ntotalparts;i++){
+    if(ownerofpartition[i]==me){
       for(idx_t p=0;p<nprocs;p++){
-        if(gsubmeshessizes[p*ntotalsubmeshes+i]>0 and p!=me){
+        if(gpartssizes[p*ntotalparts+i]>0 and p!=me){
           nRecvRequest+=1;
-          maxRecv=std::max((esize+1)*gsubmeshessizes[p*ntotalsubmeshes+i],maxRecv);
+          maxRecv=std::max((esize+1)*gpartssizes[p*ntotalparts+i],maxRecv);
         }
       }
     }
@@ -185,25 +185,25 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
   statRecv = new MPI_Status[nRecvRequest];
 
   idx_t k=0;
-  for(idx_t i=0;i<ntotalsubmeshes;i++){
-    if(gsubmeshessizes[me*ntotalsubmeshes+i] > 0){
-      if(ownerofsubmesh[i]!=me){//Send to ownerofsubmesh[i]
-        MPI_Isend((void *)submesheselems[i], (esize+1)*submeshessizes[i], IDX_T, ownerofsubmesh[i], me*ntotalsubmeshes+i, comm, &requestSendPtr[k]);
+  for(idx_t i=0;i<ntotalparts;i++){
+    if(gpartssizes[me*ntotalparts+i] > 0){
+      if(ownerofpartition[i]!=me){//Send to ownerofpartition[i]
+        MPI_Isend((void *)partselems[i], (esize+1)*partssizes[i], IDX_T, ownerofpartition[i], me*ntotalparts+i, comm, &requestSendPtr[k]);
         k+=1;
       }
-      else{//Add to my partition
-        submeshesowned[submeshlocid[i]].Addelems(submesheselems[i], 0, submeshessizes[i], esize);
+      else{//Add to my epartition
+        parts[partitionlocid[i]].add_elems(partselems[i], 0, partssizes[i], esize);
       }
     }
   } 
 
   k=0;
   idx_t *tmpElems = new idx_t[(esize+1)*nRecvRequest*maxRecv];
-  for(idx_t i=0;i<ntotalsubmeshes;i++){
-    if(ownerofsubmesh[i]==me){
+  for(idx_t i=0;i<ntotalparts;i++){
+    if(ownerofpartition[i]==me){
       for(idx_t p=0;p<nprocs;p++){
-        if(gsubmeshessizes[p*ntotalsubmeshes+i]>0 and p!=me){//Recv from p and add to my partition
-          MPI_Irecv((void *)(tmpElems+k*maxRecv*(esize+1)), (esize+1)*gsubmeshessizes[p*ntotalsubmeshes+i], IDX_T, p, p*ntotalsubmeshes+i, comm, &requestRecvPtr[k]);
+        if(gpartssizes[p*ntotalparts+i]>0 and p!=me){//Recv from p and add to my epartition
+          MPI_Irecv((void *)(tmpElems+k*maxRecv*(esize+1)), (esize+1)*gpartssizes[p*ntotalparts+i], IDX_T, p, p*ntotalparts+i, comm, &requestRecvPtr[k]);
           k+=1;
         }
       }
@@ -214,25 +214,25 @@ void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t es
   MPI_Waitall(nRecvRequest, requestRecvPtr, statRecv);
 
   k=0;
-  for(idx_t i=0;i<ntotalsubmeshes;i++){
-    if(ownerofsubmesh[i]==me){
+  for(idx_t i=0;i<ntotalparts;i++){
+    if(ownerofpartition[i]==me){
       for(idx_t p=0;p<nprocs;p++){
-        if(gsubmeshessizes[p*ntotalsubmeshes+i]>0 and p!=me){//Recv from p and add to my partition
-          submeshesowned[submeshlocid[i]].Addelems(tmpElems, k*maxRecv*(esize+1), gsubmeshessizes[p*ntotalsubmeshes+i], esize);
+        if(gpartssizes[p*ntotalparts+i]>0 and p!=me){//Recv from p and add to my epartition
+          parts[partitionlocid[i]].add_elems(tmpElems, k*maxRecv*(esize+1), gpartssizes[p*ntotalparts+i], esize);
           k+=1;
         }
       }
     }
   }
 
-  //Free of submesheselems
+  //Free of partselems
   std::map<idx_t, idx_t*>::iterator it;
-  for(it=submesheselems.begin();it!=submesheselems.end();it++){
+  for(it=partselems.begin();it!=partselems.end();it++){
     delete [] it->second;
   }
 }
 
-void buildBoundaryEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set){
+void build_boundary_edges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set){
 
   idx_t nelems=elems.size()/esize;
 
@@ -254,7 +254,7 @@ void buildBoundaryEdges(int esize, std::vector<idx_t> &elems, std::unordered_map
   }
 }
 
-void buildEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
+void build_edges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges){
 
   idx_t nelems=elems.size()/esize;
 
@@ -300,7 +300,7 @@ void buildBoundaryFaces(int esize, std::vector<idx_t> &elems, std::unordered_map
   }
 }
 
-void buildFaces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
+void build_faces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces){
   idx_t nelems=elems.size()/esize;
   idx_t fsize=3; //tetrahedron
   std::vector<idx_t> dummy(fsize,-1);
@@ -325,7 +325,7 @@ void buildFaces(int esize, std::vector<idx_t> &elems, std::unordered_map<std::ve
   }
 }
 
-void buildElemConnectivity2D(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<idx_t> &neighbors){
+void build_elems_connectivity_2d(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::vector<idx_t> &neighbors){
   std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>:: iterator it = edges.begin();
 
   idx_t s1,s2,elem1,elem2,sp;
@@ -353,7 +353,7 @@ void buildElemConnectivity2D(int esize, std::vector<idx_t> &elems, std::unordere
   }
 }
 
-void buildElemConnectivity3D(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<idx_t> &neighbors){
+void build_elems_connectivity_3d(int esize, std::vector<idx_t> &elems, std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> &faces, std::vector<idx_t> &neighbors){
   std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>:: iterator it = faces.begin();
 
   idx_t faceSize=3;//Tetrahedron
@@ -395,21 +395,21 @@ void buildElemConnectivity3D(int esize, std::vector<idx_t> &elems, std::unordere
   }
 }
 
-void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
+void build_connectivity(std::vector<partition> &parts, idx_t dimension){
   if(dimension==2){
-    for(idx_t k=0;k<submeshesowned.size();k++){
+    for(idx_t k=0;k<parts.size();k++){
       std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> edges;
-      submeshesowned[k].neighbors.resize(submeshesowned[k].get_nelems()*submeshesowned[k].esize, -1);
-      buildEdges(submeshesowned[k].esize, submeshesowned[k].elems, edges);
-      buildElemConnectivity2D(submeshesowned[k].esize,submeshesowned[k].elems, edges, submeshesowned[k].neighbors);
+      parts[k].neighbors.resize(parts[k].get_nelems()*parts[k].esize, -1);
+      build_edges(parts[k].esize, parts[k].elems, edges);
+      build_elems_connectivity_2d(parts[k].esize,parts[k].elems, edges, parts[k].neighbors);
     }
   }
   if(dimension==3){
-    for(idx_t k=0;k<submeshesowned.size();k++){
+    for(idx_t k=0;k<parts.size();k++){
       std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash> faces;
-      submeshesowned[k].neighbors.resize(submeshesowned[k].get_nelems()*submeshesowned[k].esize, -1);
-      buildFaces(submeshesowned[k].esize,submeshesowned[k].elems, faces);
-      buildElemConnectivity3D(submeshesowned[k].esize,submeshesowned[k].elems, faces, submeshesowned[k].neighbors);
+      parts[k].neighbors.resize(parts[k].get_nelems()*parts[k].esize, -1);
+      build_faces(parts[k].esize,parts[k].elems, faces);
+      build_elems_connectivity_3d(parts[k].esize,parts[k].elems, faces, parts[k].neighbors);
     }
   }
 }
@@ -417,129 +417,125 @@ void Buildconnectivity(std::vector<submesh> &submeshesowned, idx_t dimension){
 
 
 
-void Findboundaryfromconnectivity(std::vector<submesh> &submeshesowned, idx_t method, idx_t numlayers){
+void find_boundary_from_connectivity(std::vector<partition> &parts, idx_t method, idx_t numlayers){
 
-  for(idx_t k=0;k<submeshesowned.size();k++){
-    for(idx_t i=0;i<submeshesowned[k].get_nelems();i++){
-      if(submeshesowned[k].isBoundary(i)){
-        submeshesowned[k].boundaryelems.insert(i);
+  for(idx_t k=0;k<parts.size();k++){
+    for(idx_t i=0;i<parts[k].get_nelems();i++){
+      if(parts[k].is_boundary(i)){
+        parts[k].boundaryelems.insert(i);
 
-        /* if(method==1){ */
         //Add boundarynodes
-        for(idx_t j=0; j<submeshesowned[k].esize; j++){
-          if(submeshesowned[k].get_neighbors(i,j) == -1){
-            submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(i,j));
-            submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(i,(j+1)%submeshesowned[k].esize));
-            submeshesowned[k].l1_boundarynodes.insert(submeshesowned[k].get_elems(i,j));
-            submeshesowned[k].l1_boundarynodes.insert(submeshesowned[k].get_elems(i,(j+1)%submeshesowned[k].esize));
+        for(idx_t j=0; j<parts[k].esize; j++){
+          if(parts[k].get_neighbors(i,j) == -1){
+            parts[k].boundarynodes.insert(parts[k].get_elems(i,j));
+            parts[k].boundarynodes.insert(parts[k].get_elems(i,(j+1)%parts[k].esize));
+            parts[k].l1_boundarynodes.insert(parts[k].get_elems(i,j));
+            parts[k].l1_boundarynodes.insert(parts[k].get_elems(i,(j+1)%parts[k].esize));
           }
         }
-        /* } */
       }
     }  
 
     //If method=1 add cells that have only a point in the boundary points
     if(method==1){
-      for(idx_t i=0;i<submeshesowned[k].get_nelems();i++){
-        for(idx_t j=0;j<submeshesowned[k].esize;j++){
-          if(submeshesowned[k].boundarynodes.find(submeshesowned[k].get_elems(i,j))!=submeshesowned[k].boundarynodes.end()){
-            submeshesowned[k].boundaryelems.insert(i);
+      for(idx_t i=0;i<parts[k].get_nelems();i++){
+        for(idx_t j=0;j<parts[k].esize;j++){
+          if(parts[k].boundarynodes.find(parts[k].get_elems(i,j))!=parts[k].boundarynodes.end()){
+            parts[k].boundaryelems.insert(i);
           }
         }
       }
 
-      for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-          it!=submeshesowned[k].boundaryelems.end();it++){
-        for(idx_t p=0; p<submeshesowned[k].esize; p++){
-          submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,p));
+      for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+          it!=parts[k].boundaryelems.end();it++){
+        for(idx_t p=0; p<parts[k].esize; p++){
+          parts[k].boundarynodes.insert(parts[k].get_elems(*it,p));
         }
       }
     }
 
     for(idx_t l=1; l<numlayers; l++){
-      std::set<idx_t> tmpnewboundaryelems = submeshesowned[k].boundaryelems;
+      std::set<idx_t> tmpnewboundaryelems = parts[k].boundaryelems;
       std::set<idx_t>::iterator it;
       for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
-        for(idx_t j=0;j<submeshesowned[k].esize;j++){
-          if(submeshesowned[k].get_neighbors(*it,j) != -1){
-            submeshesowned[k].boundaryelems.insert(submeshesowned[k].get_neighbors(*it,j));
+        for(idx_t j=0;j<parts[k].esize;j++){
+          if(parts[k].get_neighbors(*it,j) != -1){
+            parts[k].boundaryelems.insert(parts[k].get_neighbors(*it,j));
 
-            /* if(method==1){ */
             //Add boundarynodes
-            for(idx_t j=0; j<submeshesowned[k].esize; j++){
-              submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,j));
+            for(idx_t j=0; j<parts[k].esize; j++){
+              parts[k].boundarynodes.insert(parts[k].get_elems(*it,j));
             }
-            /* } */
 
           }
         } 
       }
 
       if(method==1){
-        for(idx_t i=0;i<submeshesowned[k].get_nelems();i++){
-          for(idx_t j=0;j<submeshesowned[k].esize;j++){
-            if(submeshesowned[k].boundarynodes.find(submeshesowned[k].get_elems(i,j))!=submeshesowned[k].boundarynodes.end()){
-              submeshesowned[k].boundaryelems.insert(i);
+        for(idx_t i=0;i<parts[k].get_nelems();i++){
+          for(idx_t j=0;j<parts[k].esize;j++){
+            if(parts[k].boundarynodes.find(parts[k].get_elems(i,j))!=parts[k].boundarynodes.end()){
+              parts[k].boundaryelems.insert(i);
             }
           }
         }
-        for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-            it!=submeshesowned[k].boundaryelems.end();it++){
-          for(idx_t p=0; p<submeshesowned[k].esize; p++){
-            submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,p));
+        for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+            it!=parts[k].boundaryelems.end();it++){
+          for(idx_t p=0; p<parts[k].esize; p++){
+            parts[k].boundarynodes.insert(parts[k].get_elems(*it,p));
           }
         }
       }
     }
 
-    for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-        it!=submeshesowned[k].boundaryelems.end();it++){
-      for(idx_t p=0; p<submeshesowned[k].esize; p++){
-        submeshesowned[k].boundarynodes.insert(submeshesowned[k].get_elems(*it,p));
+    for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+        it!=parts[k].boundaryelems.end();it++){
+      for(idx_t p=0; p<parts[k].esize; p++){
+        parts[k].boundarynodes.insert(parts[k].get_elems(*it,p));
       }
     }
 
   }
 }
 
-void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimension, idx_t method, idx_t numlayers){
+void find_nodes_send_recv(std::vector<partition> &parts, idx_t dimension, idx_t method, idx_t numlayers){
 
-  int esize = submeshesowned[0].esize;
+  int esize = parts[0].esize;
 
-  for(idx_t k; k<submeshesowned.size(); k++){
+  for(idx_t k; k<parts.size(); k++){
     //Build my boundary connectivity
     if(dimension==2){
-      buildBoundaryEdges(esize,submeshesowned[k].elems, submeshesowned[k].boundary_edges, submeshesowned[k].boundaryelems);
+      build_boundary_edges(esize,parts[k].elems, parts[k].boundary_edges, parts[k].boundaryelems);
 
       std::set<idx_t>::iterator iter;
-      for(iter=submeshesowned[k].potentialneighbors.begin(); 
-          iter!= submeshesowned[k].potentialneighbors.end(); iter++){
+      for(iter=parts[k].potentialneighbors.begin(); 
+          iter!= parts[k].potentialneighbors.end(); iter++){
 
         if( not g_potentialneighbors[*iter].already_computed() ){
 
           g_potentialneighbors[*iter].neighbors.resize(g_potentialneighbors[*iter].get_nelems()*esize,-1);
-          buildEdges(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].edges);
-          buildElemConnectivity2D(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].edges, g_potentialneighbors[*iter].neighbors);
+          build_edges(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].edges);
+          build_elems_connectivity_2d(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].edges, g_potentialneighbors[*iter].neighbors);
         }
 
 
         std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash>::iterator it_edges;
         for(it_edges=g_potentialneighbors[*iter].edges.begin();it_edges!=g_potentialneighbors[*iter].edges.end();it_edges++){
-          if(submeshesowned[k].boundary_edges.find(it_edges->first)!=submeshesowned[k].boundary_edges.end()){
+          if(parts[k].boundary_edges.find(it_edges->first)!=parts[k].boundary_edges.end()){
 
             //Add elem to recv
             idx_t elem=it_edges->second.first;
-            submeshesowned[k].elemstorecv[*iter].insert(elem);
+            parts[k].elemstorecv[*iter].insert(elem);
             //Add boundarynodes to recv
-            submeshesowned[k].nodestorecv[*iter].insert(it_edges->first.first);
-            submeshesowned[k].nodestorecv[*iter].insert(it_edges->first.second);
+            parts[k].nodestorecv[*iter].insert(it_edges->first.first);
+            parts[k].nodestorecv[*iter].insert(it_edges->first.second);
 
             //Add elem to send
-            elem=submeshesowned[k].boundary_edges[it_edges->first].first;
-            submeshesowned[k].elemstosend[*iter].insert(elem);
+            elem=parts[k].boundary_edges[it_edges->first].first;
+            parts[k].elemstosend[*iter].insert(elem);
             //Add boundarynodes to send
-            submeshesowned[k].nodestosend[*iter].insert(it_edges->first.first);
-            submeshesowned[k].nodestosend[*iter].insert(it_edges->first.second);
+            parts[k].nodestosend[*iter].insert(it_edges->first.first);
+            parts[k].nodestosend[*iter].insert(it_edges->first.second);
 
 
           }
@@ -549,36 +545,36 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
         if(method==1){
           for(idx_t i=0;i<g_potentialneighbors[*iter].get_nelems();i++){
             for(idx_t j=0;j<esize;j++){
-              if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
-                submeshesowned[k].elemstorecv[*iter].insert(i);
+              if(parts[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=parts[k].nodestorecv[*iter].end()){
+                parts[k].elemstorecv[*iter].insert(i);
               }
             }
           }
-          for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-              it!=submeshesowned[k].elemstorecv[*iter].end();
+          for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+              it!=parts[k].elemstorecv[*iter].end();
               it++){
             for(idx_t p=0; p<esize; p++){
-              submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
+              parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
             }
           }
         }
 
         //SEND If method=1 add cells that have only a point in the boundary points
         if(method==1){
-          for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-              it!=submeshesowned[k].boundaryelems.end();
+          for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+              it!=parts[k].boundaryelems.end();
               it++){
             for(idx_t j=0;j<esize;j++){
-              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
-                submeshesowned[k].elemstosend[*iter].insert(*it);
+              if(parts[k].nodestosend[*iter].find(parts[k].get_elems(*it,j))!=parts[k].nodestosend[*iter].end()){
+                parts[k].elemstosend[*iter].insert(*it);
               }
             }
           }
-          for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
-              it!=submeshesowned[k].elemstosend[*iter].end();
+          for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin();
+              it!=parts[k].elemstosend[*iter].end();
               it++){
             for(idx_t p=0; p<esize; p++){
-              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
+              parts[k].nodestosend[*iter].insert(parts[k].get_elems(*it,p));
             }
           }
         }
@@ -586,49 +582,49 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
         //Add all the layers
         for(idx_t l=1; l<numlayers; l++){
           //Add to send list
-          std::set<idx_t> tmpnewboundaryelems = submeshesowned[k].elemstosend[*iter];
+          std::set<idx_t> tmpnewboundaryelems = parts[k].elemstosend[*iter];
           std::set<idx_t>::iterator it;
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
             for(idx_t j=0;j<esize;j++){
-              if(submeshesowned[k].get_neighbors(*it,j) != -1){
-                submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].get_neighbors(*it,j));
+              if(parts[k].get_neighbors(*it,j) != -1){
+                parts[k].elemstosend[*iter].insert(parts[k].get_neighbors(*it,j));
                 //Add boundarynodes
                 for(idx_t j=0; j<esize; j++){
-                  submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,j));
+                  parts[k].nodestosend[*iter].insert(parts[k].get_elems(*it,j));
                 }
               }
             } 
           }
           //If method=1 add cells that have only a point in the boundary points
           if(method==1){
-            for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-                it!=submeshesowned[k].boundaryelems.end();
+            for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+                it!=parts[k].boundaryelems.end();
                 it++){
               for(idx_t j=0;j<esize;j++){
-                if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
-                  submeshesowned[k].elemstosend[*iter].insert(*it);
+                if(parts[k].nodestosend[*iter].find(parts[k].get_elems(*it,j))!=parts[k].nodestosend[*iter].end()){
+                  parts[k].elemstosend[*iter].insert(*it);
                 }
               }
             }
-            for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
-                it!=submeshesowned[k].elemstosend[*iter].end();
+            for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin();
+                it!=parts[k].elemstosend[*iter].end();
                 it++){
               for(idx_t p=0; p<esize; p++){
-                submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
+                parts[k].nodestosend[*iter].insert(parts[k].get_elems(*it,p));
               }
             }
           }
 
           //Add to recv list
           tmpnewboundaryelems.clear();
-          tmpnewboundaryelems = submeshesowned[k].elemstorecv[*iter];
+          tmpnewboundaryelems = parts[k].elemstorecv[*iter];
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
             for(idx_t j=0;j<esize;j++){
               if(g_potentialneighbors[*iter].neighbors[*it*esize+j] != -1){
-                submeshesowned[k].elemstorecv[*iter].insert(g_potentialneighbors[*iter].neighbors[*it*esize+j]);
+                parts[k].elemstorecv[*iter].insert(g_potentialneighbors[*iter].neighbors[*it*esize+j]);
                 //Add boundarynodes
                 for(idx_t j=0; j<esize; j++){
-                  submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
+                  parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
                 }
               }
             } 
@@ -637,16 +633,16 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           if(method==1){
             for(idx_t i=0; i<g_potentialneighbors[*iter].get_nelems(); i++){
               for(idx_t j=0;j<esize;j++){
-                if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
-                  submeshesowned[k].elemstorecv[*iter].insert(i);
+                if(parts[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=parts[k].nodestorecv[*iter].end()){
+                  parts[k].elemstorecv[*iter].insert(i);
                 }
               }
             }
-            for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-                it!=submeshesowned[k].elemstorecv[*iter].end();
+            for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+                it!=parts[k].elemstorecv[*iter].end();
                 it++){
               for(idx_t p=0; p<esize; p++){
-                submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
+                parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
               }
             }
           }
@@ -654,10 +650,10 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         }
 
-        for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-            it!=submeshesowned[k].elemstorecv[*iter].end();it++){
+        for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+            it!=parts[k].elemstorecv[*iter].end();it++){
           for(idx_t p=0; p<esize; p++){
-            submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
+            parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
           }
         }
 
@@ -665,39 +661,39 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
       }
     }
     if(dimension==3){
-      buildBoundaryFaces(esize,submeshesowned[k].elems, submeshesowned[k].boundary_faces, submeshesowned[k].boundaryelems);
+      buildBoundaryFaces(esize,parts[k].elems, parts[k].boundary_faces, parts[k].boundaryelems);
       idx_t faceSize=3;//Tetrahedron
 
       std::set<idx_t>::iterator iter;
-      for(iter=submeshesowned[k].potentialneighbors.begin(); 
-          iter!= submeshesowned[k].potentialneighbors.end(); iter++){
+      for(iter=parts[k].potentialneighbors.begin(); 
+          iter!= parts[k].potentialneighbors.end(); iter++){
 
         if( not g_potentialneighbors[*iter].already_computed() ){
           g_potentialneighbors[*iter].neighbors.resize(g_potentialneighbors[*iter].get_nelems()*esize,-1);
 
-          buildFaces(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].faces);
-          buildElemConnectivity3D(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].faces, g_potentialneighbors[*iter].neighbors);
+          build_faces(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].faces);
+          build_elems_connectivity_3d(esize,g_potentialneighbors[*iter].elems, g_potentialneighbors[*iter].faces, g_potentialneighbors[*iter].neighbors);
         }
 
         std::unordered_map<std::vector<idx_t>, std::pair<idx_t,idx_t>, vector_idx_t_hash>::iterator it_faces;
 
         for(it_faces=g_potentialneighbors[*iter].faces.begin();it_faces!=g_potentialneighbors[*iter].faces.end();it_faces++){
-          if(submeshesowned[k].boundary_faces.find(it_faces->first)!=submeshesowned[k].boundary_faces.end()){
+          if(parts[k].boundary_faces.find(it_faces->first)!=parts[k].boundary_faces.end()){
 
             //Add elem to recv
             idx_t elem=it_faces->second.first;
-            submeshesowned[k].elemstorecv[*iter].insert(elem);
+            parts[k].elemstorecv[*iter].insert(elem);
             //Add boundarynodes to recv
             for(idx_t p=0; p<faceSize; p++){
-              submeshesowned[k].nodestorecv[*iter].insert(it_faces->first[p]);
+              parts[k].nodestorecv[*iter].insert(it_faces->first[p]);
             }
 
             //Add elem to send
-            elem=submeshesowned[k].boundary_faces[it_faces->first].first;
-            submeshesowned[k].elemstosend[*iter].insert(elem);
+            elem=parts[k].boundary_faces[it_faces->first].first;
+            parts[k].elemstosend[*iter].insert(elem);
             //Add boundarynodes to send
             for(idx_t p=0; p<faceSize; p++){
-              submeshesowned[k].nodestosend[*iter].insert(it_faces->first[p]);
+              parts[k].nodestosend[*iter].insert(it_faces->first[p]);
             }
 
 
@@ -708,36 +704,36 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
         if(method==1){
           for(idx_t i=0;i<g_potentialneighbors[*iter].get_nelems();i++){
             for(idx_t j=0;j<esize;j++){
-              if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
-                submeshesowned[k].elemstorecv[*iter].insert(i);
+              if(parts[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=parts[k].nodestorecv[*iter].end()){
+                parts[k].elemstorecv[*iter].insert(i);
               }
             }
           }
-          for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-              it!=submeshesowned[k].elemstorecv[*iter].end();
+          for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+              it!=parts[k].elemstorecv[*iter].end();
               it++){
             for(idx_t p=0; p<esize; p++){
-              submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
+              parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
             }
           }
         }
 
         //SEND If method=1 add cells that have only a point in the boundary points
         if(method==1){
-          for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-              it!=submeshesowned[k].boundaryelems.end();
+          for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+              it!=parts[k].boundaryelems.end();
               it++){
             for(idx_t j=0;j<esize;j++){
-              if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
-                submeshesowned[k].elemstosend[*iter].insert(*it);
+              if(parts[k].nodestosend[*iter].find(parts[k].get_elems(*it,j))!=parts[k].nodestosend[*iter].end()){
+                parts[k].elemstosend[*iter].insert(*it);
               }
             }
           }
-          for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
-              it!=submeshesowned[k].elemstosend[*iter].end();
+          for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin();
+              it!=parts[k].elemstosend[*iter].end();
               it++){
             for(idx_t p=0; p<esize; p++){
-              submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
+              parts[k].nodestosend[*iter].insert(parts[k].get_elems(*it,p));
             }
           }
         }
@@ -745,49 +741,49 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
         //Add all the layers
         for(idx_t l=1; l<numlayers; l++){
           //Add to send list
-          std::set<idx_t> tmpnewboundaryelems = submeshesowned[k].elemstosend[*iter];
+          std::set<idx_t> tmpnewboundaryelems = parts[k].elemstosend[*iter];
           std::set<idx_t>::iterator it;
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
             for(idx_t j=0;j<esize;j++){
-              if(submeshesowned[k].get_neighbors(*it,j) != -1){
-                submeshesowned[k].elemstosend[*iter].insert(submeshesowned[k].get_neighbors(*it,j));
+              if(parts[k].get_neighbors(*it,j) != -1){
+                parts[k].elemstosend[*iter].insert(parts[k].get_neighbors(*it,j));
                 //Add boundarynodes
                 for(idx_t j=0; j<esize; j++){
-                  submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,j));
+                  parts[k].nodestosend[*iter].insert(parts[k].get_elems(*it,j));
                 }
               }
             } 
           }
           //If method=1 add cells that have only a point in the boundary points
           if(method==1){
-            for(std::set<idx_t>::iterator it=submeshesowned[k].boundaryelems.begin();
-                it!=submeshesowned[k].boundaryelems.end();
+            for(std::set<idx_t>::iterator it=parts[k].boundaryelems.begin();
+                it!=parts[k].boundaryelems.end();
                 it++){
               for(idx_t j=0;j<esize;j++){
-                if(submeshesowned[k].nodestosend[*iter].find(submeshesowned[k].get_elems(*it,j))!=submeshesowned[k].nodestosend[*iter].end()){
-                  submeshesowned[k].elemstosend[*iter].insert(*it);
+                if(parts[k].nodestosend[*iter].find(parts[k].get_elems(*it,j))!=parts[k].nodestosend[*iter].end()){
+                  parts[k].elemstosend[*iter].insert(*it);
                 }
               }
             }
-            for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
-                it!=submeshesowned[k].elemstosend[*iter].end();
+            for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin();
+                it!=parts[k].elemstosend[*iter].end();
                 it++){
               for(idx_t p=0; p<esize; p++){
-                submeshesowned[k].nodestosend[*iter].insert(submeshesowned[k].get_elems(*it,p));
+                parts[k].nodestosend[*iter].insert(parts[k].get_elems(*it,p));
               }
             }
           }
 
           //Add to recv list
           tmpnewboundaryelems.clear();
-          tmpnewboundaryelems = submeshesowned[k].elemstorecv[*iter];
+          tmpnewboundaryelems = parts[k].elemstorecv[*iter];
           for(it=tmpnewboundaryelems.begin();it!=tmpnewboundaryelems.end();it++){
             for(idx_t j=0;j<esize;j++){
               if(g_potentialneighbors[*iter].neighbors[*it*esize+j] != -1){
-                submeshesowned[k].elemstorecv[*iter].insert(g_potentialneighbors[*iter].neighbors[*it*esize+j]);
+                parts[k].elemstorecv[*iter].insert(g_potentialneighbors[*iter].neighbors[*it*esize+j]);
                 //Add boundarynodes
                 for(idx_t j=0; j<esize; j++){
-                  submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
+                  parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,j));
                 }
               }
             } 
@@ -796,16 +792,16 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
           if(method==1){
             for(idx_t i=0; i<g_potentialneighbors[*iter].get_nelems(); i++){
               for(idx_t j=0;j<esize;j++){
-                if(submeshesowned[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=submeshesowned[k].nodestorecv[*iter].end()){
-                  submeshesowned[k].elemstorecv[*iter].insert(i);
+                if(parts[k].nodestorecv[*iter].find(g_potentialneighbors[*iter].get_elems(i,j))!=parts[k].nodestorecv[*iter].end()){
+                  parts[k].elemstorecv[*iter].insert(i);
                 }
               }
             }
-            for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-                it!=submeshesowned[k].elemstorecv[*iter].end();
+            for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+                it!=parts[k].elemstorecv[*iter].end();
                 it++){
               for(idx_t p=0; p<esize; p++){
-                submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
+                parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
               }
             }
           }
@@ -813,10 +809,10 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
         }
 
-        for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-            it!=submeshesowned[k].elemstorecv[*iter].end();it++){
+        for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+            it!=parts[k].elemstorecv[*iter].end();it++){
           for(idx_t p=0; p<esize; p++){
-            submeshesowned[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
+            parts[k].nodestorecv[*iter].insert(g_potentialneighbors[*iter].get_elems(*it,p));
           }
         }
       }
@@ -826,7 +822,7 @@ void FindNodesElemsSendRecv(std::vector<submesh> &submeshesowned, idx_t dimensio
 
 }
 
-void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm){
+void share_boundaryFixPotentialNeighbors(std::vector<partition> &parts, std::vector<idx_t> &ownerofpartition, MPI_Comm comm){
 
   idx_t nprocs, me;
   MPI_Status stat;
@@ -839,39 +835,39 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
   std::vector<std::set<idx_t> > msgs_send(nprocs);
   std::vector<std::set<idx_t> > msgs_recv(nprocs);
 
-  idx_t esize=submeshesowned[0].esize;
+  idx_t esize=parts[0].esize;
 
 
   std::set<idx_t>::iterator it;
   idx_t iloc(0);
   idx_t idum;
 
-  //Construct submeshlocid (reverse lookup of mesh id)
-  std::map<idx_t, idx_t> submeshlocid;
-  for(idx_t i=0;i<submeshesowned.size();i++){
-    submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i));
+  //Construct partitionlocid (reverse lookup of mesh id)
+  std::map<idx_t, idx_t> partitionlocid;
+  for(idx_t i=0;i<parts.size();i++){
+    partitionlocid.insert(std::make_pair(parts[i].partitionid, i));
   }
 
   //Find max number of nodes and elems to send
   idx_t maxnodestosend(0), maxelemstosend(0);
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    maxnodestosend = std::max(maxnodestosend, (idx_t) submeshesowned[k].l1_boundarynodes.size());
+  for(idx_t k=0; k<parts.size(); k++){
+    maxnodestosend = std::max(maxnodestosend, (idx_t) parts[k].l1_boundarynodes.size());
   }
 
-  idx_t *nodestosend = new idx_t[maxnodestosend*submeshesowned.size()];
+  idx_t *nodestosend = new idx_t[maxnodestosend*parts.size()];
 
   //Compute total number of messages/request
   idx_t ntotreq_send=0;
   idx_t ntotreq_recv=0;
   idx_t nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
-      if(ownerofsubmesh[*it]!=me && (msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0)){
-        msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors_extents.begin(); it!= parts[k].potentialneighbors_extents.end(); it++){
+      if(ownerofpartition[*it]!=me && (msgs_send[ownerofpartition[*it]].count(parts[k].partitionid)==0)){
+        msgs_send[ownerofpartition[*it]].insert(parts[k].partitionid);
         ntotreq_send++;
       }
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         ntotreq_recv++;
       }
     }
@@ -880,9 +876,9 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
   requestSendPtr = new MPI_Request[ntotreq_send];
 
   //Construc contiguous vector of nodes  to send
-  for(idx_t k=0; k<submeshesowned.size(); k++){
+  for(idx_t k=0; k<parts.size(); k++){
     iloc=0;
-    for(it=submeshesowned[k].l1_boundarynodes.begin(); it!=submeshesowned[k].l1_boundarynodes.end(); it++){
+    for(it=parts[k].l1_boundarynodes.begin(); it!=parts[k].l1_boundarynodes.end(); it++){
       nodestosend[k*maxnodestosend+iloc] = (idx_t) *it;
       iloc++;
     }
@@ -897,21 +893,20 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
 
   //Send Nodes vector
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
-      if(msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0){
-        if(ownerofsubmesh[*it]!=me){
-          MPI_Isend(&nodestosend[maxnodestosend*k], submeshesowned[k].l1_boundarynodes.size(), IDX_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors_extents.begin(); it!= parts[k].potentialneighbors_extents.end(); it++){
+      if(msgs_send[ownerofpartition[*it]].count(parts[k].partitionid)==0){
+        if(ownerofpartition[*it]!=me){
+          MPI_Isend(&nodestosend[maxnodestosend*k], parts[k].l1_boundarynodes.size(), IDX_T, ownerofpartition[*it], (*it)*ownerofpartition.size()+parts[k].partitionid, comm, &requestSendPtr[nreq]);
           nreq++;
-          msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+          msgs_send[ownerofpartition[*it]].insert(parts[k].partitionid);
         }
         else{
           //Check for node in common, if found add to potentialnieghbors
-          idx_t k2 = submeshlocid[*it];
-          for(idx_t i=0; i<submeshesowned[k].l1_boundarynodes.size(); i++){
-            if(submeshesowned[k2].l1_boundarynodes.count(nodestosend[maxnodestosend*k+i]) != 0){
-              /* submeshesowned[k].potentialneighbors.insert(*it); */
-              submeshesowned[k2].potentialneighbors.insert(submeshesowned[k].submeshid);
+          idx_t k2 = partitionlocid[*it];
+          for(idx_t i=0; i<parts[k].l1_boundarynodes.size(); i++){
+            if(parts[k2].l1_boundarynodes.count(nodestosend[maxnodestosend*k+i]) != 0){
+              parts[k2].potentialneighbors.insert(parts[k].partitionid);
               break;
             }
           }
@@ -926,13 +921,13 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
   idx_t maxnodestorecv=0;
 
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        MPI_Probe(ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors_extents.begin(); it!= parts[k].potentialneighbors_extents.end(); it++){
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        MPI_Probe(ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
         MPI_Get_count(&stat,IDX_T,&nnodestorecv[nreq]);
         maxnodestorecv = std::max(maxnodestorecv,nnodestorecv[nreq]);
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         nreq++;
       }
     }
@@ -950,29 +945,29 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
 
   //IRecv nodes vector
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors_extents.begin(); it!= submeshesowned[k].potentialneighbors_extents.end(); it++){
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        MPI_Recv(&nodestorecv[nreq*maxnodestorecv], nnodestorecv[nreq], IDX_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors_extents.begin(); it!= parts[k].potentialneighbors_extents.end(); it++){
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        MPI_Recv(&nodestorecv[nreq*maxnodestorecv], nnodestorecv[nreq], IDX_T, ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
 
         //Check for node in common, if found add to potentialnieghbors
         for(idx_t i=0; i<nnodestorecv[nreq]; i++){
-          if(submeshesowned[k].l1_boundarynodes.count(nodestorecv[nreq*maxnodestorecv+i]) != 0){
-            submeshesowned[k].potentialneighbors.insert(*it);
+          if(parts[k].l1_boundarynodes.count(nodestorecv[nreq*maxnodestorecv+i]) != 0){
+            parts[k].potentialneighbors.insert(*it);
             break;
           }
         }
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
-        msgs_req_recv[ownerofsubmesh[*it]].insert({*it,nreq});
+        msgs_recv[ownerofpartition[*it]].insert(*it);
+        msgs_req_recv[ownerofpartition[*it]].insert({*it,nreq});
         nreq++;
       }
-      else if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==1){
+      else if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==1){
         //Find what req the msg came with
-        idx_t loc_req=msgs_req_recv[ownerofsubmesh[*it]][*it];
+        idx_t loc_req=msgs_req_recv[ownerofpartition[*it]][*it];
         //Check for node in common, if found add to potentialnieghbors
         for(idx_t i=0; i<nnodestorecv[loc_req]; i++){
-          if(submeshesowned[k].l1_boundarynodes.count(nodestorecv[loc_req*maxnodestorecv+i]) != 0){
-            submeshesowned[k].potentialneighbors.insert(*it);
+          if(parts[k].l1_boundarynodes.count(nodestorecv[loc_req*maxnodestorecv+i]) != 0){
+            parts[k].potentialneighbors.insert(*it);
             break;
           }
         }
@@ -987,7 +982,7 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
   delete [] nnodestorecv;
 }
 
-void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &ownerofsubmesh, MPI_Comm comm){
+void share_boundary(std::vector<partition> &parts, std::vector<idx_t> &ownerofpartition, MPI_Comm comm){
 
   idx_t nprocs, me;
   MPI_Status stat;
@@ -1000,41 +995,41 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   std::vector<std::set<idx_t> > msgs_send(nprocs);
   std::vector<std::set<idx_t> > msgs_recv(nprocs);
 
-  idx_t esize=submeshesowned[0].esize;
+  idx_t esize=parts[0].esize;
 
 
   std::set<idx_t>::iterator it;
   idx_t iloc(0);
   idx_t idum;
 
-  //Construct submeshlocid (reverse lookup of mesh id)
-  std::map<idx_t, idx_t> submeshlocid;
-  for(idx_t i=0;i<submeshesowned.size();i++){
-    submeshlocid.insert(std::make_pair(submeshesowned[i].submeshid, i));
+  //Construct partitionlocid (reverse lookup of mesh id)
+  std::map<idx_t, idx_t> partitionlocid;
+  for(idx_t i=0;i<parts.size();i++){
+    partitionlocid.insert(std::make_pair(parts[i].partitionid, i));
   }
 
   //Find max number of nodes and elems to send
   idx_t maxnodestosend(0), maxelemstosend(0);
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    maxnodestosend = std::max(maxnodestosend, (idx_t) submeshesowned[k].boundarynodes.size());
-    maxelemstosend = std::max(maxelemstosend, (idx_t) submeshesowned[k].boundaryelems.size());
+  for(idx_t k=0; k<parts.size(); k++){
+    maxnodestosend = std::max(maxnodestosend, (idx_t) parts[k].boundarynodes.size());
+    maxelemstosend = std::max(maxelemstosend, (idx_t) parts[k].boundaryelems.size());
   }
 
-  real_t *nodestosend = new real_t[maxnodestosend*4*submeshesowned.size()];
-  idx_t *elemstosend = new idx_t[maxelemstosend*(1+esize)*submeshesowned.size()];
+  real_t *nodestosend = new real_t[maxnodestosend*4*parts.size()];
+  idx_t *elemstosend = new idx_t[maxelemstosend*(1+esize)*parts.size()];
 
   //Compute total number of messages/request
   idx_t ntotreq_send=0;
   idx_t ntotreq_recv=0;
   idx_t nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(ownerofsubmesh[*it]!=me && (msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0)){
-        msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(ownerofpartition[*it]!=me && (msgs_send[ownerofpartition[*it]].count(parts[k].partitionid)==0)){
+        msgs_send[ownerofpartition[*it]].insert(parts[k].partitionid);
         ntotreq_send++;
       }
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         ntotreq_recv++;
       }
     }
@@ -1043,14 +1038,14 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   requestSendPtr = new MPI_Request[ntotreq_send];
 
   //Construc contiguous vector of nodes  to send
-  for(idx_t k=0; k<submeshesowned.size(); k++){
+  for(idx_t k=0; k<parts.size(); k++){
     iloc=0;
-    for(it=submeshesowned[k].boundarynodes.begin(); it!=submeshesowned[k].boundarynodes.end(); it++){
-      idum = submeshesowned[k].nodes_gtl[*it];
+    for(it=parts[k].boundarynodes.begin(); it!=parts[k].boundarynodes.end(); it++){
+      idum = parts[k].nodes_gtl[*it];
       nodestosend[4*k*maxnodestosend+4*iloc] = (idx_t) *it;
-      nodestosend[4*k*maxnodestosend+4*iloc+1] = submeshesowned[k].get_nodes(idum,0);
-      nodestosend[4*k*maxnodestosend+4*iloc+2] = submeshesowned[k].get_nodes(idum,1);
-      nodestosend[4*k*maxnodestosend+4*iloc+3] = submeshesowned[k].get_nodes(idum,2);
+      nodestosend[4*k*maxnodestosend+4*iloc+1] = parts[k].get_nodes(idum,0);
+      nodestosend[4*k*maxnodestosend+4*iloc+2] = parts[k].get_nodes(idum,1);
+      nodestosend[4*k*maxnodestosend+4*iloc+3] = parts[k].get_nodes(idum,2);
       iloc++;
     }
   }
@@ -1064,27 +1059,27 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
 
   //Send Nodes vector
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0){
-        if(ownerofsubmesh[*it]!=me){
-          MPI_Isend(&nodestosend[4*maxnodestosend*k], submeshesowned[k].boundarynodes.size()*4, REAL_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(msgs_send[ownerofpartition[*it]].count(parts[k].partitionid)==0){
+        if(ownerofpartition[*it]!=me){
+          MPI_Isend(&nodestosend[4*maxnodestosend*k], parts[k].boundarynodes.size()*4, REAL_T, ownerofpartition[*it], (*it)*ownerofpartition.size()+parts[k].partitionid, comm, &requestSendPtr[nreq]);
           nreq++;
         }
         else{
           potential_neighbors_boundary pnbound;
-          pnbound.nodes.resize(submeshesowned[k].boundarynodes.size()*3,0.);
-          for(idx_t i=0;i<submeshesowned[k].boundarynodes.size();i++){
+          pnbound.nodes.resize(parts[k].boundarynodes.size()*3,0.);
+          for(idx_t i=0;i<parts[k].boundarynodes.size();i++){
             pnbound.nodes_ltg.insert(std::make_pair(i,nodestosend[4*maxnodestosend*k+i*4]));
             pnbound.nodes_gtl.insert(std::make_pair(nodestosend[4*maxnodestosend*k+i*4],i));
             pnbound.get_nodes(i,0) = nodestosend[4*maxnodestosend*k+i*4+1];
             pnbound.get_nodes(i,1) = nodestosend[4*maxnodestosend*k+i*4+2];
             pnbound.get_nodes(i,2) = nodestosend[4*maxnodestosend*k+i*4+3];
           }
-          g_potentialneighbors.insert(std::make_pair(submeshesowned[k].submeshid,pnbound));
-          g_potentialneighbors[submeshesowned[k].submeshid].esize = submeshesowned[k].esize;
+          g_potentialneighbors.insert(std::make_pair(parts[k].partitionid,pnbound));
+          g_potentialneighbors[parts[k].partitionid].esize = parts[k].esize;
         }
-        msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+        msgs_send[ownerofpartition[*it]].insert(parts[k].partitionid);
       }
     }
   }
@@ -1094,14 +1089,14 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   idx_t maxnodestorecv=0;
 
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        MPI_Probe(ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        MPI_Probe(ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
         MPI_Get_count(&stat,REAL_T,&nnodestorecv[nreq]);
         nnodestorecv[nreq] /= 4;
         maxnodestorecv = std::max(maxnodestorecv,nnodestorecv[nreq]);
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         nreq++;
       }
     }
@@ -1117,10 +1112,10 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
 
   //IRecv nodes vector
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        MPI_Recv(&nodestorecv[nreq*maxnodestorecv*4], nnodestorecv[nreq]*4, REAL_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        MPI_Recv(&nodestorecv[nreq*maxnodestorecv*4], nnodestorecv[nreq]*4, REAL_T, ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
 
         //Add nodes
         potential_neighbors_boundary pnbound;
@@ -1133,8 +1128,8 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
           pnbound.get_nodes(i,2) = nodestorecv[4*maxnodestorecv*nreq+i*4+3];
         }
         g_potentialneighbors.insert(std::make_pair(*it,pnbound));
-        g_potentialneighbors[*it].esize = submeshesowned[k].esize;
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        g_potentialneighbors[*it].esize = parts[k].esize;
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         nreq++;
       }
     }
@@ -1143,13 +1138,13 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   MPI_Waitall(ntotreq_send, requestSendPtr, statSend);
 
   //Construc contiguous vector of elems to send
-  for(idx_t k=0; k<submeshesowned.size(); k++){
+  for(idx_t k=0; k<parts.size(); k++){
     iloc=0;
-    for(it=submeshesowned[k].boundaryelems.begin(); it!=submeshesowned[k].boundaryelems.end(); it++){
-      idum = submeshesowned[k].elems_ltg[*it];
+    for(it=parts[k].boundaryelems.begin(); it!=parts[k].boundaryelems.end(); it++){
+      idum = parts[k].elems_ltg[*it];
       elemstosend[(1+esize)*(maxelemstosend*k+iloc)] = idum;
       for(idx_t j=0;j<esize;j++){
-        elemstosend[(1+esize)*(maxelemstosend*k+iloc)+j+1] = submeshesowned[k].get_elems(*it,j);
+        elemstosend[(1+esize)*(maxelemstosend*k+iloc)+j+1] = parts[k].get_elems(*it,j);
       }
       iloc++;
     }
@@ -1163,25 +1158,25 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
 
   //Send elems vector
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(msgs_send[ownerofsubmesh[*it]].count(submeshesowned[k].submeshid)==0){
-        if(ownerofsubmesh[*it]!=me){
-          MPI_Isend(&elemstosend[(1+esize)*maxelemstosend*k], submeshesowned[k].boundaryelems.size()*(1+esize), IDX_T, ownerofsubmesh[*it], (*it)*ownerofsubmesh.size()+submeshesowned[k].submeshid, comm, &requestSendPtr[nreq]);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(msgs_send[ownerofpartition[*it]].count(parts[k].partitionid)==0){
+        if(ownerofpartition[*it]!=me){
+          MPI_Isend(&elemstosend[(1+esize)*maxelemstosend*k], parts[k].boundaryelems.size()*(1+esize), IDX_T, ownerofpartition[*it], (*it)*ownerofpartition.size()+parts[k].partitionid, comm, &requestSendPtr[nreq]);
           nreq++;
         }
         else{
-          g_potentialneighbors[submeshesowned[k].submeshid].esize = esize;
-          g_potentialneighbors[submeshesowned[k].submeshid].elems.resize(submeshesowned[k].boundaryelems.size()*esize,0);
-          for(idx_t i=0;i<submeshesowned[k].boundaryelems.size();i++){
-            g_potentialneighbors[submeshesowned[k].submeshid].elems_ltg.insert(std::make_pair(i,elemstosend[(1+esize)*(maxelemstosend*k+i)]));
-            g_potentialneighbors[submeshesowned[k].submeshid].elems_gtl.insert(std::make_pair(elemstosend[(1+esize)*(maxelemstosend*k+i)],i));
+          g_potentialneighbors[parts[k].partitionid].esize = esize;
+          g_potentialneighbors[parts[k].partitionid].elems.resize(parts[k].boundaryelems.size()*esize,0);
+          for(idx_t i=0;i<parts[k].boundaryelems.size();i++){
+            g_potentialneighbors[parts[k].partitionid].elems_ltg.insert(std::make_pair(i,elemstosend[(1+esize)*(maxelemstosend*k+i)]));
+            g_potentialneighbors[parts[k].partitionid].elems_gtl.insert(std::make_pair(elemstosend[(1+esize)*(maxelemstosend*k+i)],i));
             for(idx_t j=0;j<esize;j++){
-              g_potentialneighbors[submeshesowned[k].submeshid].get_elems(i,j) = elemstosend[(1+esize)*(maxelemstosend*k+i)+j+1];
+              g_potentialneighbors[parts[k].partitionid].get_elems(i,j) = elemstosend[(1+esize)*(maxelemstosend*k+i)+j+1];
             }
           }
         }
-        msgs_send[ownerofsubmesh[*it]].insert(submeshesowned[k].submeshid);
+        msgs_send[ownerofpartition[*it]].insert(parts[k].partitionid);
       }
     }
   }
@@ -1191,14 +1186,14 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   idx_t maxelemstorecv=0;
 
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        MPI_Probe(ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        MPI_Probe(ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
         MPI_Get_count(&stat,IDX_T,&nelemstorecv[nreq]);
         nelemstorecv[nreq] /= (1+esize);
         maxelemstorecv = std::max(maxelemstorecv,nelemstorecv[nreq]);
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         nreq++;
       }
     }
@@ -1214,10 +1209,10 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
 
   //IRecv elems vector
   nreq=0;
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(it=submeshesowned[k].potentialneighbors.begin(); it!= submeshesowned[k].potentialneighbors.end(); it++){
-      if(ownerofsubmesh[*it]!=me && msgs_recv[ownerofsubmesh[*it]].count(*it)==0){
-        MPI_Recv(&elemstorecv[nreq*(1+esize)*maxelemstorecv], nelemstorecv[nreq]*(1+esize), IDX_T, ownerofsubmesh[*it], (*it)+ownerofsubmesh.size()*submeshesowned[k].submeshid, comm, &stat);
+  for(idx_t k=0; k<parts.size(); k++){
+    for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
+      if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
+        MPI_Recv(&elemstorecv[nreq*(1+esize)*maxelemstorecv], nelemstorecv[nreq]*(1+esize), IDX_T, ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
 
         //Add elems
         g_potentialneighbors[*it].esize = esize;
@@ -1229,7 +1224,7 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
             g_potentialneighbors[*it].get_elems(i,j) = elemstorecv[(1+esize)*(maxelemstorecv*nreq+i)+j+1];
           }
         }
-        msgs_recv[ownerofsubmesh[*it]].insert(*it);
+        msgs_recv[ownerofpartition[*it]].insert(*it);
         nreq++;
       }
     }
@@ -1245,7 +1240,7 @@ void Shareboundary(std::vector<submesh> &submeshesowned, std::vector<idx_t> &own
   delete [] nelemstorecv;
 }
 
-void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshesowned, MPI_Comm comm){
+void compute_potential_neighbors_from_extents(idx_t ntotparts, std::vector<partition> &parts, MPI_Comm comm){
   idx_t nprocs, me;
   MPI_Status stat;
   MPI_Status *statSend, *statRecv;
@@ -1253,146 +1248,142 @@ void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshes
   MPI_Comm_size(comm,&nprocs);
   MPI_Comm_rank(comm,&me);
 
-  /* std::vector<std::vector<std::vector<real_t> > > allextents(nsubmeshes,std::vector<std::vector<real_t> >(3, std::vector<real_t>(2, 0.))); */
-  real_t *allextents = new real_t[nsubmeshes*3*2];
-  for(idx_t k=0;k<nsubmeshes*2*3;k++){
+  /* std::vector<std::vector<std::vector<real_t> > > allextents(ntotparts,std::vector<std::vector<real_t> >(3, std::vector<real_t>(2, 0.))); */
+  real_t *allextents = new real_t[ntotparts*3*2];
+  for(idx_t k=0;k<ntotparts*2*3;k++){
     allextents[k] = 0.;
   }
 
-  //Compute each submesh extents
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    submeshesowned[k].computemyextents();
-    allextents[submeshesowned[k].submeshid*3*2] = submeshesowned[k].extents[0][0];
-    allextents[submeshesowned[k].submeshid*3*2 + 1] = submeshesowned[k].extents[0][1];
-    allextents[submeshesowned[k].submeshid*3*2 + 2] = submeshesowned[k].extents[1][0];
-    allextents[submeshesowned[k].submeshid*3*2 + 3] = submeshesowned[k].extents[1][1];
-    allextents[submeshesowned[k].submeshid*3*2 + 4] = submeshesowned[k].extents[2][0];
-    allextents[submeshesowned[k].submeshid*3*2 + 5] = submeshesowned[k].extents[2][1];
+  //Compute each partition extents
+  for(idx_t k=0; k<parts.size(); k++){
+    parts[k].compute_extents();
+    allextents[parts[k].partitionid*3*2] = parts[k].extents[0][0];
+    allextents[parts[k].partitionid*3*2 + 1] = parts[k].extents[0][1];
+    allextents[parts[k].partitionid*3*2 + 2] = parts[k].extents[1][0];
+    allextents[parts[k].partitionid*3*2 + 3] = parts[k].extents[1][1];
+    allextents[parts[k].partitionid*3*2 + 4] = parts[k].extents[2][0];
+    allextents[parts[k].partitionid*3*2 + 5] = parts[k].extents[2][1];
   }
 
   //Share extents with everyone
-  //MPI_Allreduce(MPI_IN_PLACE, &allextents[0][0][0], nsubmeshes*3*2, REAL_T, MPI_SUM, comm);
-  //MPI_Allreduce(MPI_IN_PLACE, allextents.data(), 3*2, REAL_T, MPI_SUM, comm);
-  MPI_Allreduce(MPI_IN_PLACE, allextents, nsubmeshes*3*2, REAL_T, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, allextents, ntotparts*3*2, REAL_T, MPI_SUM, comm);
 
   real_t eps=1e-10;
 
   bool interx, intery, interz;
   //Compute potential neighbors
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    for(idx_t p=0; p<nsubmeshes; p++){
-      if(submeshesowned[k].submeshid!=p){
-        interx = ((allextents[submeshesowned[k].submeshid*6+1]>=allextents[p*6]-eps) and
-            (allextents[submeshesowned[k].submeshid*6+1]<=allextents[p*6+1]+eps));
-        interx = interx or ((allextents[submeshesowned[k].submeshid*6]>=allextents[p*6]-eps) and
-            (allextents[submeshesowned[k].submeshid*6]<=allextents[p*6+1]+eps));
-        interx = interx or ((allextents[submeshesowned[k].submeshid*6]<=allextents[p*6]+eps) and
-            (allextents[submeshesowned[k].submeshid*6+1]>=allextents[p*6+1]-eps));
+  for(idx_t k=0; k<parts.size(); k++){
+    for(idx_t p=0; p<ntotparts; p++){
+      if(parts[k].partitionid!=p){
+        interx = ((allextents[parts[k].partitionid*6+1]>=allextents[p*6]-eps) and
+            (allextents[parts[k].partitionid*6+1]<=allextents[p*6+1]+eps));
+        interx = interx or ((allextents[parts[k].partitionid*6]>=allextents[p*6]-eps) and
+            (allextents[parts[k].partitionid*6]<=allextents[p*6+1]+eps));
+        interx = interx or ((allextents[parts[k].partitionid*6]<=allextents[p*6]+eps) and
+            (allextents[parts[k].partitionid*6+1]>=allextents[p*6+1]-eps));
 
-        intery = ((allextents[submeshesowned[k].submeshid*6+3]>=allextents[p*6+2]-eps) and
-            (allextents[submeshesowned[k].submeshid*6+3]<=allextents[p*6+3]+eps));
-        intery = intery or ((allextents[submeshesowned[k].submeshid*6+2]>=allextents[p*6+2]-eps) and (allextents[submeshesowned[k].submeshid*6+2]<=allextents[p*6+3]+eps));
-        intery = intery or ((allextents[submeshesowned[k].submeshid*6+2]<=allextents[p*6+2]+eps) and (allextents[submeshesowned[k].submeshid*6+3]>=allextents[p*6+3]-eps));
+        intery = ((allextents[parts[k].partitionid*6+3]>=allextents[p*6+2]-eps) and
+            (allextents[parts[k].partitionid*6+3]<=allextents[p*6+3]+eps));
+        intery = intery or ((allextents[parts[k].partitionid*6+2]>=allextents[p*6+2]-eps) and (allextents[parts[k].partitionid*6+2]<=allextents[p*6+3]+eps));
+        intery = intery or ((allextents[parts[k].partitionid*6+2]<=allextents[p*6+2]+eps) and (allextents[parts[k].partitionid*6+3]>=allextents[p*6+3]-eps));
 
-        interz = ((allextents[submeshesowned[k].submeshid*6+5]>=allextents[p*6+4]-eps) and
-            (allextents[submeshesowned[k].submeshid*6+5]<=allextents[p*6+5]+eps));
-        interz = interz or ((allextents[submeshesowned[k].submeshid*6+4]>=allextents[p*6+4]-eps) and (allextents[submeshesowned[k].submeshid*6+4]<=allextents[p*6+5]+eps));
-        interz = interz or ((allextents[submeshesowned[k].submeshid*6+4]<=allextents[p*6+4]+eps) and (allextents[submeshesowned[k].submeshid*6+5]>=allextents[p*6+5]-eps));
+        interz = ((allextents[parts[k].partitionid*6+5]>=allextents[p*6+4]-eps) and
+            (allextents[parts[k].partitionid*6+5]<=allextents[p*6+5]+eps));
+        interz = interz or ((allextents[parts[k].partitionid*6+4]>=allextents[p*6+4]-eps) and (allextents[parts[k].partitionid*6+4]<=allextents[p*6+5]+eps));
+        interz = interz or ((allextents[parts[k].partitionid*6+4]<=allextents[p*6+4]+eps) and (allextents[parts[k].partitionid*6+5]>=allextents[p*6+5]-eps));
 
         if((interx and intery) and interz){
-          submeshesowned[k].potentialneighbors_extents.insert(p);
+          parts[k].potentialneighbors_extents.insert(p);
         }
       }
     }
   }
 }
 
-void AddElemsAndRenumber(std::vector<submesh> &submeshesowned){
+void add_elemsAndRenumber(std::vector<partition> &parts){
   //Renumber send elems
-  for(idx_t k=0; k<submeshesowned.size(); k++){
-    //Add Recv elements to local partition
-    for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
-        iter!=submeshesowned[k].potentialneighbors.end();
+  for(idx_t k=0; k<parts.size(); k++){
+    //Add Recv elements to local epartition
+    for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
+        iter!=parts[k].potentialneighbors.end();
         iter++){
-      for(std::set<idx_t>::iterator it=submeshesowned[k].nodestorecv[*iter].begin();
-          it!=submeshesowned[k].nodestorecv[*iter].end();
+      for(std::set<idx_t>::iterator it=parts[k].nodestorecv[*iter].begin();
+          it!=parts[k].nodestorecv[*iter].end();
           it++){
-        if(submeshesowned[k].nodes_gtl.find(*it)==submeshesowned[k].nodes_gtl.end()){
-          submeshesowned[k].nodes_ltg.insert(std::make_pair(submeshesowned[k].get_nnodes(), *it));
-          submeshesowned[k].nodes_gtl.insert(std::make_pair(*it, submeshesowned[k].get_nnodes()));
+        if(parts[k].nodes_gtl.find(*it)==parts[k].nodes_gtl.end()){
+          parts[k].nodes_ltg.insert(std::make_pair(parts[k].get_nnodes(), *it));
+          parts[k].nodes_gtl.insert(std::make_pair(*it, parts[k].get_nnodes()));
           for(int kk=0; kk<3; kk++){
-            submeshesowned[k].nodes.push_back(g_potentialneighbors[*iter].get_nodes(g_potentialneighbors[*iter].nodes_gtl[*it],kk));
+            parts[k].nodes.push_back(g_potentialneighbors[*iter].get_nodes(g_potentialneighbors[*iter].nodes_gtl[*it],kk));
           }
         }
       }
-      for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-          it!=submeshesowned[k].elemstorecv[*iter].end();
+      for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+          it!=parts[k].elemstorecv[*iter].end();
           it++){
         idx_t itglob = g_potentialneighbors[*iter].elems_ltg[*it];
-        submeshesowned[k].elems_ltg.insert(std::make_pair(submeshesowned[k].get_nelems(), itglob));
-        submeshesowned[k].elems_gtl.insert(std::make_pair(itglob, submeshesowned[k].get_nelems()));
-        for(int kk=0; kk<submeshesowned[k].esize; kk++){
-          submeshesowned[k].elems.push_back(g_potentialneighbors[*iter].get_elems(*it,kk));
+        parts[k].elems_ltg.insert(std::make_pair(parts[k].get_nelems(), itglob));
+        parts[k].elems_gtl.insert(std::make_pair(itglob, parts[k].get_nelems()));
+        for(int kk=0; kk<parts[k].esize; kk++){
+          parts[k].elems.push_back(g_potentialneighbors[*iter].get_elems(*it,kk));
         }
       }
     }
-    /* submeshesowned[k].nnodes = submeshesowned[k].get_nnodes(); */
-    /* submeshesowned[k].nelems = submeshesowned[k].get_nelems(); */
 
     //Renumbering
-    submeshesowned[k].renumber_otn.resize(submeshesowned[k].get_nelems(), -1);
-    submeshesowned[k].renumber_nto.resize(submeshesowned[k].get_nelems(), -1);
+    parts[k].renumber_otn.resize(parts[k].get_nelems(), -1);
+    parts[k].renumber_nto.resize(parts[k].get_nelems(), -1);
     idx_t itloc;
     idx_t ind=0;
     bool norsendorrecv;
-    for(idx_t i=0; i<submeshesowned[k].get_nelems(); i++){
+    for(idx_t i=0; i<parts[k].get_nelems(); i++){
       norsendorrecv = true;
-      for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
-          iter!=submeshesowned[k].potentialneighbors.end();
+      for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
+          iter!=parts[k].potentialneighbors.end();
           iter++){
 
-        if(submeshesowned[k].elemstosend[*iter].find(i)!=submeshesowned[k].elemstosend[*iter].end()){
+        if(parts[k].elemstosend[*iter].find(i)!=parts[k].elemstosend[*iter].end()){
           norsendorrecv = false;
         }
 
-        if(g_potentialneighbors[*iter].elems_gtl.find(submeshesowned[k].elems_ltg[i])!=g_potentialneighbors[*iter].elems_gtl.end()){
-          itloc = g_potentialneighbors[*iter].elems_gtl[submeshesowned[k].elems_ltg[i]];
-          if(submeshesowned[k].elemstorecv[*iter].find(itloc)!=submeshesowned[k].elemstorecv[*iter].end()){
+        if(g_potentialneighbors[*iter].elems_gtl.find(parts[k].elems_ltg[i])!=g_potentialneighbors[*iter].elems_gtl.end()){
+          itloc = g_potentialneighbors[*iter].elems_gtl[parts[k].elems_ltg[i]];
+          if(parts[k].elemstorecv[*iter].find(itloc)!=parts[k].elemstorecv[*iter].end()){
             norsendorrecv = false;
           }
         }
       }
 
       if(norsendorrecv){
-        submeshesowned[k].renumber_otn[i] = ind;
-        submeshesowned[k].renumber_nto[ind] = i;
+        parts[k].renumber_otn[i] = ind;
+        parts[k].renumber_nto[ind] = i;
         ind++;
       }
     }
 
-    for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
-        iter!=submeshesowned[k].potentialneighbors.end();
+    for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
+        iter!=parts[k].potentialneighbors.end();
         iter++){
-      for(std::set<idx_t>::iterator it=submeshesowned[k].elemstosend[*iter].begin();
-          it!=submeshesowned[k].elemstosend[*iter].end();
+      for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin();
+          it!=parts[k].elemstosend[*iter].end();
           it++){
-        if(submeshesowned[k].renumber_otn[*it] == -1){
-          submeshesowned[k].renumber_otn[*it] = ind;
-          submeshesowned[k].renumber_nto[ind] = *it;
+        if(parts[k].renumber_otn[*it] == -1){
+          parts[k].renumber_otn[*it] = ind;
+          parts[k].renumber_nto[ind] = *it;
           ind++;
         }
       }
     }
 
-    for(std::set<idx_t>::iterator iter=submeshesowned[k].potentialneighbors.begin();
-        iter!=submeshesowned[k].potentialneighbors.end();
+    for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
+        iter!=parts[k].potentialneighbors.end();
         iter++){
-      for(std::set<idx_t>::iterator it=submeshesowned[k].elemstorecv[*iter].begin();
-          it!=submeshesowned[k].elemstorecv[*iter].end();
+      for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
+          it!=parts[k].elemstorecv[*iter].end();
           it++){
-        idx_t itglobloc = submeshesowned[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[*it]];
-        submeshesowned[k].renumber_otn[itglobloc] = ind;
-        submeshesowned[k].renumber_nto[ind] = itglobloc;
+        idx_t itglobloc = parts[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[*it]];
+        parts[k].renumber_otn[itglobloc] = ind;
+        parts[k].renumber_nto[ind] = itglobloc;
         ind++;
       }
     }

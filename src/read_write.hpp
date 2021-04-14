@@ -17,43 +17,28 @@
 #ifndef READ_WRITE
 #define READ_WRITE
 
-void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm);
+void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& epart, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm);
 
-//ParallelReadMesh refactored from ParallelReadMesh in parmetis/programs/io.c
-void ParallelReadMesh(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm);
+void read_boundary_conditions(std::vector<partition> &parts, std::string filename);
 
-void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string filename);
+void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition);
 
-void boundaryConditionsCute(std::vector<submesh> &submeshesowned, std::string file);
+void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition);
 
-void writeneighbors(std::vector<submesh> &submeshesowned, idx_t esize);
+void read_arrays(std::vector<partition> &parts, std::string filename, MPI_Comm comm);
 
-void writeCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
+void write_wo_recv_vtk(std::vector<partition> &parts, idx_t esize, idx_t dim);
 
-void writeMeshCGNS1(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
+void write_vtk(std::vector<partition> &parts, idx_t esize, idx_t dim);
 
-void writeMeshCGNS2(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
+void write_recv_vtk(std::vector<partition> &parts, idx_t esize, idx_t dim);
 
-void readArrays(std::vector<submesh> &submeshesowned, std::string filename, MPI_Comm comm);
+void write_send_vtk(std::vector<partition> &parts, idx_t esize, idx_t dim);
 
-void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
+void read_nodes_cgns(std::vector<partition> &parts, std::string filename, MPI_Comm comm);
 
-void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
+void write_pcgns_without_send_recv_info(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition);
 
-void writesendrecvCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writerecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writesendVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename, MPI_Comm comm);
-
-void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename, MPI_Comm comm);
-
-void writeMeshPCGNS_wos(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
-void writeMeshPCGNS_ch(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
-void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
+void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition);
 
 #endif
