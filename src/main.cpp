@@ -7,6 +7,7 @@
 #include <parmetis.h>
 
 #include "module_parmetis.hpp"
+#include "read_write.hpp"
 
 extern "C" int get_memory_usage_kb(long* vmrss_kb, long* vmsize_kb);
 
@@ -107,9 +108,6 @@ int main(int argc, char *argv[]) {
   Findboundaryfromconnectivity(submeshesowned, method, numlayers);
   Computepotentialneighbors(nsubmeshes, submeshesowned, comm);
   ShareboundaryFixPotentialNeighbors(submeshesowned, ownerofsubmesh, comm);
-  for(int k=0; k<submeshesowned.size(); k++){
-    std::cout << submeshesowned[k].submeshid << " " << submeshesowned[k].potentialneighbors_extents.size() << " " << submeshesowned[k].potentialneighbors.size() << std::endl;
-  }
   Shareboundary(submeshesowned, ownerofsubmesh, comm);
   FindNodesElemsSendRecv(submeshesowned, dim, method, numlayers);
   AddElemsAndRenumber(submeshesowned);

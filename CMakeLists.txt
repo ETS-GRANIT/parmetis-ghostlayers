@@ -8,7 +8,7 @@ find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 include_directories(.)
 
-add_executable(main src/memory.c src/module_parmetis.hpp src/module_parmetis.cpp src/main.cpp)
+add_executable(main src/memory.c src/read_write.hpp src/read_write.cpp src/module_parmetis.hpp src/module_parmetis.cpp src/main.cpp)
 
 target_link_libraries(main ${MPI_LIBRARIES} parmetis metis cgns)
 

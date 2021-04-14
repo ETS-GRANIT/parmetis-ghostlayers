@@ -132,41 +132,6 @@ void Computesubmeshownership(idx_t nsubmeshes, idx_t &nsubmeshesowned, std::vect
 
 void Gathersubmeshes(idx_t*& elmdist, idx_t*& eind, idx_t*& part, const idx_t esize, std::vector<submesh> &submeshesowned, std::vector<idx_t> const ownerofsubmesh, MPI_Comm comm);
 
-void ParallelReadMeshCGNS(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm);
-
-//ParallelReadMesh refactored from ParallelReadMesh in parmetis/programs/io.c
-void ParallelReadMesh(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& part, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm);
-
-void boundaryConditionsNodes(std::vector<submesh> &submeshesowned, std::string filename);
-
-void boundaryConditionsCute(std::vector<submesh> &submeshesowned, std::string file);
-
-void writeneighbors(std::vector<submesh> &submeshesowned, idx_t esize);
-
-void writeCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writeMeshCGNS1(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
-
-void writeMeshCGNS2(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
-
-void readArrays(std::vector<submesh> &submeshesowned, std::string filename, MPI_Comm comm);
-
-void writeworecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writeVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writesendrecvCute(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writerecvVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writesendVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void writeboundaryVTK(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim);
-
-void updateNodes(std::vector<submesh> &submeshesowned, std::string nodesFilename, MPI_Comm comm);
-
-void updateNodesCGNS(std::vector<submesh> &submeshesowned, std::string filename, MPI_Comm comm);
-
 void buildBoundaryEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges, std::set<idx_t> &elems_set);
 
 void buildEdges(int esize, std::vector<idx_t> &elems, std::unordered_map<std::pair<idx_t,idx_t>, std::pair<idx_t,idx_t>, pair_idx_t_hash> &edges);
@@ -192,9 +157,5 @@ void ShareboundaryFixPotentialNeighbors(std::vector<submesh> &submeshesowned, st
 void Computepotentialneighbors(idx_t nsubmeshes, std::vector<submesh> &submeshesowned, MPI_Comm comm);
 
 void AddElemsAndRenumber(std::vector<submesh> &submeshesowned);
-
-void writeMeshPCGNS_wos(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
-void writeMeshPCGNS_ch(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
-void writeMeshPCGNS(std::vector<submesh> &submeshesowned, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofsubmesh);
 
 #endif
