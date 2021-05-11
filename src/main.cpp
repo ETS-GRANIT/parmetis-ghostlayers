@@ -115,28 +115,36 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(comm);
 
   auto tio3 = std::chrono::high_resolution_clock::now();
-  /* read_boundary_conditions(parts, basename); */
-  /* read_arrays(parts, basename, comm); */
+  read_boundary_conditions(parts, basename);
+  read_arrays(parts, basename, comm);
   auto tio4 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
   get_memory_usage_kb(&vmrss, &vmsize);
 
+  MPI_Barrier(comm);
   auto tio7 = std::chrono::high_resolution_clock::now();
-  /* write_cgns_separate(parts, esize, dim, ownerofpartition); */
+  write_cgns_separate(parts, esize, dim, ownerofpartition);
   auto tio8 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
+  MPI_Barrier(comm);
   auto tio5 = std::chrono::high_resolution_clock::now();
   /* write_cgns_single(parts, esize, dim, ownerofpartition); */
   auto tio6 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
+  MPI_Barrier(comm);
   auto tio9 = std::chrono::high_resolution_clock::now();
-  /* write_pcgns_without_send_recv_info(parts, esize, dim, ownerofpartition); */
+  write_pcgns_without_send_recv_info(parts, esize, dim, ownerofpartition);
   auto tio10 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
+  MPI_Barrier(comm);
   auto tio11 = std::chrono::high_resolution_clock::now();
-  /* write_pcgns_hybird_with_send_recv_info(parts, esize, dim, ownerofpartition); */
+  write_pcgns_hybird_with_send_recv_info(parts, esize, dim, ownerofpartition);
   auto tio12 = std::chrono::high_resolution_clock::now();
+  MPI_Barrier(comm);
 
   double duration1 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count()/1.0e6;
   double duration2 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count()/1.0e6;

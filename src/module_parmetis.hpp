@@ -63,7 +63,7 @@ extern std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 
 // partition struct so store a sub-domain
 struct partition {
-  int partitionid; // Number of the sub-domain
+  int partitionid;
 
   int esize; // Element size (number of vertices of the elements)
 
@@ -71,7 +71,7 @@ struct partition {
   std::set<idx_t> potentialneighbors_extents; // Set of extents computed potential neighbors id
   std::set<idx_t> potentialneighbors; // Set of potential neighbors id fixed by looking for same nodes
 
-  // Main 3 vectors of the sub-domain
+  // Main 3 vectors of the partition
   std::vector<real_t> nodes;
   std::vector<idx_t> elems;
   std::vector<idx_t> neighbors;
@@ -109,8 +109,6 @@ struct partition {
 
   // Set of nodes for boundary conditions
   std::vector<std::set<idx_t> > boundary_conditions;
-  std::vector<std::string> boundary_conditions_names;
-  std::vector<CGNS_ENUMV(BCType_t)> boundary_conditions_types;
 
   // Userdefined arrays in cgnsfile
   std::vector<std::string>  ud_names;

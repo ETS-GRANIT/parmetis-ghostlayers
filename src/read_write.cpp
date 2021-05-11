@@ -12,6 +12,11 @@
 #include "read_write.hpp"
 #include "module_parmetis.hpp"
 
+//Global variables to store name an type of all boundary conditions
+//The issue with local variables is that it is diffucult to send BCType_t via MPI
+std::vector<std::string> boundary_conditions_names;
+std::vector<CGNS_ENUMV(BCType_t)> boundary_conditions_types;
+
 void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& epart, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm){
 
   int me, nprocs;
@@ -139,10 +144,10 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
   gnelems = sizes[1];
 
   if(cg_nbocos(index_file, base, zone, &nBocos) != CG_OK) cg_get_error();
+  boundary_conditions_names.resize(nBocos);
+  boundary_conditions_types.resize(nBocos);
   for(int k=0; k<parts.size(); k++){
     parts[k].boundary_conditions.resize(nBocos);
-    parts[k].boundary_conditions_names.resize(nBocos);
-    parts[k].boundary_conditions_types.resize(nBocos);
   }
   for(int boco=1; boco<=nBocos; boco++)
   {
@@ -152,18 +157,22 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
     bcnodes = new cgsize_t[nBCNodes];
     CGNS_ENUMV(GridLocation_t) location;
     if(cg_boco_gridlocation_read(index_file, base, zone, boco, &location) != CG_OK) cg_get_error();
-    assert(location==CGNS_ENUMV(Vertex));
-    if(cg_boco_read(index_file, base, zone, boco, bcnodes,
-          NULL) != CG_OK) cg_get_error();
-
-    for(int k=0; k<parts.size(); k++){
-      parts[k].boundary_conditions_names[boco-1] = boconame;
-      parts[k].boundary_conditions_types[boco-1] = bocoType;
+    /* assert(location==CGNS_ENUMV(Vertex)); */
+    if(location!=CGNS_ENUMV(Vertex)){
+      std::cout << "Boundary condition not on vertex is ignored" << std::endl;
     }
-    for(cgsize_t i=0; i<nBCNodes; i++){
-      for(int k=0; k<parts.size(); k++){
-        if(parts[k].nodes_gtl.count(bcnodes[i]) != 0){
-          parts[k].boundary_conditions[boco-1].insert(bcnodes[i]);
+    else{
+      if(cg_boco_read(index_file, base, zone, boco, bcnodes,
+            NULL) != CG_OK) cg_get_error();
+
+      boundary_conditions_names[boco-1] = boconame;
+      boundary_conditions_types[boco-1] = bocoType;
+
+      for(cgsize_t i=0; i<nBCNodes; i++){
+        for(int k=0; k<parts.size(); k++){
+          if(parts[k].nodes_gtl.count(bcnodes[i]) != 0){
+            parts[k].boundary_conditions[boco-1].insert(bcnodes[i]);
+          }
         }
       }
     }
@@ -318,7 +327,7 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
           bcnodes[nbc] = parts[k].nodes_gtl[*it] ;
           nbc++;
         }
-        if(cg_boco_write(index_file,index_base,index_zone,parts[k].boundary_conditions_names[bc].c_str(),parts[k].boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[k].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
+        if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[k].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
         cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex));
       }
     }
@@ -502,7 +511,7 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
               bcnodes[nbc] = parts[k].nodes_gtl[*it] ;
               nbc++;
             }
-            if(cg_boco_write(index_file,index_base,index_zone,parts[k].boundary_conditions_names[bc].c_str(),parts[k].boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[k].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
+            if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[k].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
             cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex));
           }
         }
@@ -1297,6 +1306,33 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           delete [] elemstorecv;
         }
       }
+
+      // Boundary conditions
+      if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+      //Write boundary conditions
+      int index_bc;
+      for(int bc=0; bc<parts[kk].boundary_conditions.size(); bc++){
+        int bcsize = parts[kk].boundary_conditions[bc].size();
+        MPI_Bcast(&bcsize, 1,  MPI_INT, me, comm);
+        if(parts[kk].boundary_conditions[bc].size()>0){
+          /* std::cout << me << " sender " << parts[kk].boundary_conditions[bc].size() << std::endl; */
+          cgsize_t bcnodes[parts[kk].boundary_conditions[bc].size()];
+          cgsize_t ibc=0;
+          for(std::set<idx_t>::iterator it=parts[kk].boundary_conditions[bc].begin();
+              it!=parts[kk].boundary_conditions[bc].end();it++){
+            bcnodes[ibc] = parts[kk].nodes_gtl[*it] ;
+            ibc++;
+          }
+          
+          MPI_Bcast(&bcnodes, parts[kk].boundary_conditions[bc].size(), MPI_INT, me, comm);
+          int index_zone = cgzones[k][0];
+          if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[kk].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
+          if(cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex))) cg_error_exit();
+
+          /* std::cout << "send " << index_zone << " " << boundary_conditions_names[bc] << std::endl; */
+        }
+      }
+
     }
     else{
       //Ghost cells informations
@@ -1337,6 +1373,26 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
         if(cg_ordinal_write(fnei));
         delete [] elemstorecv;
       }
+
+      int index_bc;
+      // Boundary conditions
+      if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+      //Write boundary conditions
+      int nbc=parts[0].boundary_conditions.size();
+      for(int bc=0; bc<nbc; bc++){
+        int bcsize=0;
+        MPI_Bcast(&bcsize, 1,  MPI_INT, ownerofpartition[k], comm);
+        if(bcsize>0){
+          int *bcnodes = new int[bcsize];
+          MPI_Bcast(bcnodes, bcsize, MPI_INT, ownerofpartition[k], comm);
+
+          int index_zone = cgzones[k][0];
+          if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),bcsize,bcnodes,&index_bc)) cg_error_exit();
+          if(cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex))) cg_error_exit();
+          /* std::cout << "recv " << index_zone << " " << boundary_conditions_names[bc] << std::endl; */
+        }
+      }
+
     }
     MPI_Barrier(MPI_COMM_WORLD);
   }
