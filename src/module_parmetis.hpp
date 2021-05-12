@@ -111,8 +111,6 @@ struct partition {
   std::vector<std::set<idx_t> > boundary_conditions;
 
   // Userdefined arrays in cgnsfile
-  std::vector<std::string>  ud_names;
-  std::vector<std::vector<std::string> > ar_names;
   std::vector<std::vector<std::vector<double> > > arrays;
 
   // Function to add a set of elements to the sub-domain

@@ -17,6 +17,9 @@
 std::vector<std::string> boundary_conditions_names;
 std::vector<CGNS_ENUMV(BCType_t)> boundary_conditions_types;
 
+std::vector<std::string>  ud_names;
+std::vector<std::vector<std::string> > ar_names;
+
 void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*& epart, idx_t& esize, idx_t& dim, const idx_t numberingstart, std::string filename, MPI_Comm comm){
 
   int me, nprocs;
@@ -332,12 +335,13 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
       }
     }
 
-    int nuserdata = parts[k].ud_names.size();
+    //Write user data
+    int nuserdata = ud_names.size();
     for(int nud=1; nud<=nuserdata; nud++){
-      int narrays = parts[k].ar_names[nud-1].size();
+      int narrays = ar_names[nud-1].size();
       if(narrays>0){
         if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "end")) cg_error_exit();
-        if(cg_user_data_write(parts[k].ud_names[nud-1].c_str())) cg_error_exit();
+        if(cg_user_data_write(ud_names[nud-1].c_str())) cg_error_exit();
         cgsize_t dimensions=parts[k].arrays[nud-1][0].size();
         CGNS_ENUMV(GridLocation_t) location;
         if(dimensions==parts[k].get_nnodes()){
@@ -346,11 +350,11 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
         if(dimensions==parts[k].get_nelems()){
           location = CGNS_ENUMV(CellCenter);
         }
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, parts[k].ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
+        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
         if(cg_gridlocation_write(location)) cg_error_exit();
         for(int na=1; na<=narrays; na++){
           int rank=1;
-          if(cg_array_write(parts[k].ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, parts[k].arrays[nud-1][na-1].data())) cg_error_exit();
+          if(cg_array_write(ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, parts[k].arrays[nud-1][na-1].data())) cg_error_exit();
 
         }
       }
@@ -516,12 +520,12 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
           }
         }
 
-        int nuserdata = parts[k].ud_names.size();
+        int nuserdata = ud_names.size();
         for(int nud=1; nud<=nuserdata; nud++){
-          int narrays = parts[k].ar_names[nud-1].size();
+          int narrays = ar_names[nud-1].size();
           if(narrays>0){
             if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "end")) cg_error_exit();
-            if(cg_user_data_write(parts[k].ud_names[nud-1].c_str())) cg_error_exit();
+            if(cg_user_data_write(ud_names[nud-1].c_str())) cg_error_exit();
             cgsize_t dimensions=parts[k].arrays[nud-1][0].size();
             CGNS_ENUMV(GridLocation_t) location;
             if(dimensions==parts[k].get_nnodes()){
@@ -530,11 +534,11 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
             if(dimensions==parts[k].get_nelems()){
               location = CGNS_ENUMV(CellCenter);
             }
-            if(cg_goto(index_file, index_base, zss.str().c_str(), 0, parts[k].ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
+            if(cg_goto(index_file, index_base, zss.str().c_str(), 0, ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
             if(cg_gridlocation_write(location)) cg_error_exit();
             for(int na=1; na<=narrays; na++){
               int rank=1;
-              if(cg_array_write(parts[k].ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, parts[k].arrays[nud-1][na-1].data())) cg_error_exit();
+              if(cg_array_write(ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, parts[k].arrays[nud-1][na-1].data())) cg_error_exit();
 
             }
           }
@@ -603,19 +607,26 @@ void read_arrays(std::vector<partition> &parts, std::string filename, MPI_Comm c
         std::vector<idx_t> nloc(parts.size(), 0);
         //Resize if first time
         if(nud==1 and na==1){
+            ud_names.resize(nuserdata);
+            ar_names.resize(nuserdata, std::vector<std::string>(narrays));
           for(idx_t k=0; k<parts.size(); k++){
-            parts[k].ud_names.resize(nuserdata);
-            parts[k].ar_names.resize(nuserdata, std::vector<std::string>(narrays));
+            /* parts[k].ud_names.resize(nuserdata); */
+            /* parts[k].ar_names.resize(nuserdata, std::vector<std::string>(narrays)); */
             parts[k].arrays.resize(nuserdata, std::vector<std::vector<double> >(narrays));
           }
         }
+
+        ud_names[nud-1] = std::string(udname);
+        ar_names[nud-1][na-1] = std::string(aname);
+
+
         for(idx_t i=0; i<dimensions; i++){
           for(idx_t k=0; k<parts.size(); k++){
             if(location=CGNS_ENUMV(CellCenter)){
               if(parts[k].elems_gtl.count(i)!=0){
                 if(parts[k].arrays[nud-1][na-1].size() == 0) {
-                  parts[k].ud_names[nud-1] = std::string(udname);
-                  parts[k].ar_names[nud-1][na-1] = std::string(aname);
+                  /* parts[k].ud_names[nud-1] = std::string(udname); */
+                  /* parts[k].ar_names[nud-1][na-1] = std::string(aname); */
                   parts[k].arrays[nud-1][na-1].resize(parts[k].get_nelems());
                 }
                 int iloc = parts[k].elems_gtl[i];
@@ -1333,6 +1344,39 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
         }
       }
 
+
+      //Write user data
+      int nuserdata = ud_names.size();
+      for(int nud=1; nud<=nuserdata; nud++){
+        int narrays = ar_names[nud-1].size();
+        if(narrays>0){
+          if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+          if(cg_user_data_write(ud_names[nud-1].c_str())) cg_error_exit();
+          cgsize_t dimensions=parts[kk].arrays[nud-1][0].size();
+          CGNS_ENUMV(GridLocation_t) location;
+          MPI_Bcast(&dimensions, 1, MPI_INT, me, comm);
+          int id_location;
+          if(dimensions==parts[kk].get_nnodes()){
+            location = CGNS_ENUMV(Vertex);
+            id_location = 0;
+          }
+          if(dimensions==parts[kk].get_nelems()){
+            location = CGNS_ENUMV(CellCenter);
+            id_location = 1;
+          }
+          MPI_Bcast(&id_location, 1, MPI_INT, ownerofpartition[k], comm);
+          if(cg_goto(index_file, index_base, zms[k].c_str(), 0, ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
+          if(cg_gridlocation_write(location)) cg_error_exit();
+          for(int na=1; na<=narrays; na++){
+            int rank=1;
+            MPI_Bcast(parts[kk].arrays[nud-1][na-1].data(), dimensions, MPI_DOUBLE, me, comm);
+            if(cg_array_write(ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, parts[kk].arrays[nud-1][na-1].data())) cg_error_exit();
+
+          }
+        }
+
+      }
+
     }
     else{
       //Ghost cells informations
@@ -1391,6 +1435,38 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           if(cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex))) cg_error_exit();
           /* std::cout << "recv " << index_zone << " " << boundary_conditions_names[bc] << std::endl; */
         }
+      }
+
+
+
+      //Write user data
+      int nuserdata = ud_names.size();
+      for(int nud=1; nud<=nuserdata; nud++){
+        int narrays = ar_names[nud-1].size();
+        if(narrays>0){
+          if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+          if(cg_user_data_write(ud_names[nud-1].c_str())) cg_error_exit();
+          int dimensions, id_location;
+          CGNS_ENUMV(GridLocation_t) location;
+          MPI_Bcast(&dimensions, 1, MPI_INT, ownerofpartition[k], comm);
+          double *array = new double[dimensions];
+          MPI_Bcast(&id_location, 1, MPI_INT, ownerofpartition[k], comm);
+          if(id_location==0){
+            location = CGNS_ENUMV(Vertex);
+          }
+          if(id_location==1){
+            location = CGNS_ENUMV(CellCenter);
+          }
+          if(cg_goto(index_file, index_base, zms[k].c_str(), 0, ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
+          if(cg_gridlocation_write(location)) cg_error_exit();
+          for(int na=1; na<=narrays; na++){
+            int rank=1;
+            MPI_Bcast(array, dimensions, MPI_DOUBLE, ownerofpartition[k], comm);
+            if(cg_array_write(ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, array)) cg_error_exit();
+
+          }
+        }
+
       }
 
     }
