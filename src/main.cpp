@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
 
   MPI_Barrier(comm);
   auto tio5 = std::chrono::high_resolution_clock::now();
-  /* write_cgns_single(parts, esize, dim, ownerofpartition); */
+  write_cgns_single(parts, esize, dim, ownerofpartition);
   auto tio6 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 

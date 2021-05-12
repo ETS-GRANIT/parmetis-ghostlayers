@@ -271,7 +271,8 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
     elems = new cgsize_t[esize*parts[k].get_nelems()];
     for(idx_t i=0; i<parts[k].get_nelems(); i++){
       for(idx_t j=0; j<esize; j++){
-        elems[esize*i + j] = parts[k].renumber_otn[parts[k].nodes_gtl[parts[k].get_elems(i,j)]]+1;
+        int oldi = parts[k].renumber_nto[i];
+        elems[esize*i + j] = parts[k].nodes_gtl[parts[k].get_elems(oldi,j)]+1;
       }
     }
     if(cg_section_write(index_file,index_base,index_zone,"Elements",elementType,nstart,nend,0,elems,&index_section)) cg_error_exit();
@@ -456,7 +457,9 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
         elems = new cgsize_t[esize*parts[k].get_nelems()];
         for(idx_t i=0; i<parts[k].get_nelems(); i++){
           for(idx_t j=0; j<esize; j++){
-            elems[esize*i + j] = parts[k].renumber_otn[parts[k].nodes_gtl[parts[k].get_elems(i,j)]]+1;
+            int oldi = parts[k].renumber_nto[i];
+            elems[esize*i + j] = parts[k].nodes_gtl[parts[k].get_elems(oldi,j)]+1;
+            /* elems[esize*i + j] = parts[k].renumber_otn[parts[k].nodes_gtl[parts[k].get_elems(i,j)]]+1; */
           }
         }
         if(cg_section_write(index_file,index_base,index_zone,"Elements",elementType,nstart,nend,0,elems,&index_section)) cg_error_exit();
@@ -1090,7 +1093,9 @@ void write_pcgns_without_send_recv_info(std::vector<partition> &parts, idx_t esi
       elems = new cgsize_t[esize*nelems];
       for(idx_t i=0; i<parts[kk].get_nelems(); i++){
         for(idx_t j=0; j<esize; j++){
-          elems[esize*i + j] = parts[kk].renumber_nto[parts[kk].nodes_gtl[parts[kk].get_elems(i,j)]]+1;
+          int oldi = parts[kk].renumber_nto[i];
+          elems[esize*i + j] = parts[kk].nodes_gtl[parts[kk].get_elems(oldi,j)]+1;
+          /* elems[esize*i + j] = parts[kk].renumber_nto[parts[kk].nodes_gtl[parts[kk].get_elems(i,j)]]+1; */
         }
       }
       if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();
@@ -1249,7 +1254,9 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
       elems = new cgsize_t[esize*nelems];
       for(idx_t i=0; i<parts[kk].get_nelems(); i++){
         for(idx_t j=0; j<esize; j++){
-          elems[esize*i + j] = parts[kk].renumber_nto[parts[kk].nodes_gtl[parts[kk].get_elems(i,j)]]+1;
+          int oldi = parts[kk].renumber_nto[i];
+          elems[esize*i + j] = parts[kk].nodes_gtl[parts[kk].get_elems(oldi,j)]+1;
+          /* elems[esize*i + j] = parts[kk].renumber_nto[parts[kk].nodes_gtl[parts[kk].get_elems(i,j)]]+1; */
         }
       }
       if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();
