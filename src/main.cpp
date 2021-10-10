@@ -72,13 +72,12 @@ int main(int argc, char *argv[]) {
   }
 
   MPI_Barrier(comm);
-  idx_t options[METIS_NOPTIONS];
-  options[METIS_OPTION_CONTIG] = 1;
+  idx_t options[1]; options[0] = 0;
+  /* options[METIS_OPTION_CONTIG] = 1; */
   auto t1 = std::chrono::high_resolution_clock::now();
   ParMETIS_V3_PartMeshKway(elmdist, eptr, eind, NULL, &wgtflag, &numflag, &ncon, &ncommonnodes, &ntotparts, tpwgts, ubvec, options, &edgecut, epart, &comm);
   auto t2 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
-
 
   idx_t ntotpartsowned;
   std::vector<partition> parts;
@@ -101,6 +100,7 @@ int main(int argc, char *argv[]) {
   read_nodes_cgns(parts, basename, comm);
   auto tio2 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
+  /* if(me==0) std::cout << "Read nodes done" << std::endl; */
 
   MPI_Barrier(comm);
   auto t5 = std::chrono::high_resolution_clock::now();
@@ -124,19 +124,19 @@ int main(int argc, char *argv[]) {
 
   MPI_Barrier(comm);
   auto tio7 = std::chrono::high_resolution_clock::now();
-  write_cgns_separate(parts, esize, dim, ownerofpartition);
+  /* write_cgns_separate(parts, esize, dim, ownerofpartition); */
   auto tio8 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
   MPI_Barrier(comm);
   auto tio5 = std::chrono::high_resolution_clock::now();
-  write_cgns_single(parts, esize, dim, ownerofpartition);
+  /* write_cgns_single(parts, esize, dim, ownerofpartition); */
   auto tio6 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
   MPI_Barrier(comm);
   auto tio9 = std::chrono::high_resolution_clock::now();
-  write_pcgns_without_send_recv_info(parts, esize, dim, ownerofpartition);
+  /* write_pcgns_without_send_recv_info(parts, esize, dim, ownerofpartition); */
   auto tio10 = std::chrono::high_resolution_clock::now();
   MPI_Barrier(comm);
 
