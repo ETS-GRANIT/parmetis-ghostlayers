@@ -35,13 +35,13 @@ struct vector_idx_t_hash {
 struct potential_neighbors_boundary{
   int esize;
 
-  std::vector<real_t> nodes;
+  std::vector<double> nodes;
   std::vector<idx_t> elems;
 
   idx_t get_nnodes(){return nodes.size()/3;};
   idx_t get_nelems(){return elems.size()/esize;};
 
-  real_t& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
+  double& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
   idx_t& get_elems(idx_t i, idx_t j){return elems[i*esize+j];};
 
   //Numbering tables : gtl = global to local, ltg = local to global
@@ -72,14 +72,14 @@ struct partition {
   std::set<idx_t> potentialneighbors; // Set of potential neighbors id fixed by looking for same nodes
 
   // Main 3 vectors of the partition
-  std::vector<real_t> nodes;
+  std::vector<double> nodes;
   std::vector<idx_t> elems;
   std::vector<idx_t> neighbors;
 
   idx_t get_nnodes(){return nodes.size()/3;};
   idx_t get_nelems(){return elems.size()/esize;};
 
-  real_t& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
+  double& get_nodes(idx_t i, idx_t j){return nodes[i*3+j];};
   idx_t& get_elems(idx_t i, idx_t j){return elems[i*esize+j];};
   idx_t& get_neighbors(idx_t i, idx_t j){return neighbors[i*esize+j];};
 

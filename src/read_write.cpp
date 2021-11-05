@@ -1262,6 +1262,10 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
       if(cgp_elements_write_data(index_file,index_base,cgzones[k][0],cgzones[k][4],estart,eend,elems)) cgp_error_exit();
       delete [] elems;
 
+      //Zone ordinal number
+      if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+      if(cg_ordinal_write(k)) cg_error_exit();
+
       //Ghost cells informations
       if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
       std::string name="ElemsToSend";
@@ -1386,6 +1390,9 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
 
     }
     else{
+      //Zone ordinal number
+      if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
+      if(cg_ordinal_write(k)) cg_error_exit();
       //Ghost cells informations
       if(cg_goto(index_file, index_base, zms[k].c_str(), 0, "end")) cg_error_exit();
       std::string name="ElemsToSend";
