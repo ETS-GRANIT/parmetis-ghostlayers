@@ -288,6 +288,20 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
           elemstosend[i] = parts[k].renumber_otn[*iter]+1;
           i++;
         }
+
+        /* //Buble sort as part of new renumbering correction */
+        for(idx_t ie=0; ie < it->second.size(); ie++){
+          for(idx_t je=0; je < it->second.size()-ie-1; je++){
+            /* if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) { */
+            /* if(parts[k].elems_ltg[elemstosend[je]-1] > parts[k].elems_ltg[elemstosend[je+1]-1]) { */
+            if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) {
+              idx_t dummy = elemstosend[je];
+              elemstosend[je] = elemstosend[je+1];
+              elemstosend[je+1] = dummy;
+            }
+          }
+        }
+
         std::stringstream ssname;
         ssname << it->first;
         if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "ElemsToSend", 0, "end")) cg_error_exit();
@@ -475,6 +489,22 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
               elemstosend[i] = parts[k].renumber_otn[*iter]+1;
               i++;
             }
+
+
+            /* //Buble sort as part of new renumbering correction */
+            for(idx_t ie=0; ie < it->second.size(); ie++){
+              for(idx_t je=0; je < it->second.size()-ie-1; je++){
+                /* if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) { */
+                /* if(parts[k].elems_ltg[elemstosend[je]-1] > parts[k].elems_ltg[elemstosend[je+1]-1]) { */
+                if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) {
+                  idx_t dummy = elemstosend[je];
+                  elemstosend[je] = elemstosend[je+1];
+                  elemstosend[je+1] = dummy;
+                }
+              }
+              }
+
+
             std::stringstream ssname;
             ssname << it->first;
             if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "ElemsToSend", 0, "end")) cg_error_exit();
@@ -1290,6 +1320,20 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
             elemstosend[i] = parts[kk].renumber_otn[*iter]+1;
             i++;
           }
+
+          /* //Buble sort as part of new renumbering correction */
+          for(idx_t ie=0; ie < it->second.size(); ie++){
+            for(idx_t je=0; je < it->second.size()-ie-1; je++){
+              if(parts[kk].elems_ltg[parts[kk].renumber_nto[elemstosend[je]-1]] > parts[kk].elems_ltg[parts[kk].renumber_nto[elemstosend[je+1]-1]]) {
+                idx_t dummy = elemstosend[je];
+                elemstosend[je] = elemstosend[je+1];
+                elemstosend[je+1] = dummy;
+              }
+            }
+            }
+
+
+
           MPI_Bcast(elemstosend, snei, MPI_INT, me, comm);
           std::stringstream ssname;
           ssname << it->first;
@@ -1321,6 +1365,12 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           std::set<idx_t>::iterator iter=it->second.begin();
           idx_t itglobloc = parts[kk].elems_gtl[g_potentialneighbors[it->first].elems_ltg[*iter]];
           elemstorecv[0] = parts[kk].renumber_otn[itglobloc]+1;
+
+          for(iter=it->second.begin(); iter!=it->second.end(); iter++){
+            itglobloc = parts[kk].elems_gtl[g_potentialneighbors[it->first].elems_ltg[*iter]];
+            elemstorecv[0] = std::min(elemstorecv[0], parts[kk].renumber_otn[itglobloc]+1);
+          }
+
           elemstorecv[1] = it->second.size();
           MPI_Bcast(elemstorecv, 2, MPI_INT, me, comm);
           if(cg_ptset_write(CGNS_ENUMV(PointRange), 2, elemstorecv)) cg_error_exit();

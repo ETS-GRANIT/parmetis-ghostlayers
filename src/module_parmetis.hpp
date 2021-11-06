@@ -15,7 +15,7 @@
 
 #ifndef MODULE_PARMETIS_GHOST
 #define MODULE_PARMETIS_GHOST
-
+ 
 // Simple pair hashing function allow to use unordered set of int pair
 struct pair_idx_t_hash { 
   size_t operator()(const std::pair<idx_t, idx_t>& p) const
@@ -31,6 +31,7 @@ struct vector_idx_t_hash {
     return(p[0]);
   } 
 }; 
+
 
 struct potential_neighbors_boundary{
   int esize;
@@ -102,10 +103,10 @@ struct partition {
   std::unordered_set<idx_t> nodesindex; 
 
   // Set of elements to send and recv from each potential neighbour
-  std::map<idx_t, std::set<idx_t> > elemstosend;
-  std::map<idx_t, std::set<idx_t> > elemstorecv;
-  std::map<idx_t, std::set<idx_t> > nodestosend;
-  std::map<idx_t, std::set<idx_t> > nodestorecv;
+  std::map<idx_t, std::set<idx_t>> elemstosend;
+  std::map<idx_t, std::set<idx_t>> elemstorecv;
+  std::map<idx_t, std::set<idx_t>> nodestosend;
+  std::map<idx_t, std::set<idx_t>> nodestorecv;
 
   // Set of nodes for boundary conditions
   std::vector<std::set<idx_t> > boundary_conditions;

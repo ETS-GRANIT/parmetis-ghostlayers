@@ -1364,28 +1364,72 @@ void add_elemsAndRenumber(std::vector<partition> &parts){
     for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
         iter!=parts[k].potentialneighbors.end();
         iter++){
-      for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin();
-          it!=parts[k].elemstosend[*iter].end();
-          it++){
-        if(parts[k].renumber_otn[*it] == -1){
-          parts[k].renumber_otn[*it] = ind;
-          parts[k].renumber_nto[ind] = *it;
-          ind++;
+
+      std::vector<idx_t> sort_elemstosend;
+      sort_elemstosend.assign(parts[k].elemstosend[*iter].begin(), parts[k].elemstosend[*iter].end());
+      for(idx_t ie=0; ie<sort_elemstosend.size(); ie++){
+        for(idx_t je=0; je<sort_elemstosend.size()-ie-1; je++){
+          /* if(sort_elemstosend[je] > sort_elemstosend[je+1]){ */
+          if(parts[k].elems_ltg[sort_elemstosend[je]] > parts[k].elems_ltg[sort_elemstosend[je+1]]){
+            idx_t dummy = sort_elemstosend[je];
+            sort_elemstosend[je] = sort_elemstosend[je+1];
+            sort_elemstosend[je+1] = dummy;
+          }
+        }
+        }
+
+        for(idx_t ie=0; ie<sort_elemstosend.size(); ie++){
+          if(parts[k].renumber_otn[sort_elemstosend[ie]] == -1){
+            parts[k].renumber_otn[sort_elemstosend[ie]] = ind;
+            parts[k].renumber_nto[ind] = sort_elemstosend[ie];
+            ind++;
+          }
+        }
+
+
+        /* for(std::set<idx_t>::iterator it=parts[k].elemstosend[*iter].begin(); */
+        /*     it!=parts[k].elemstosend[*iter].end(); */
+        /*     it++){ */
+        /* if(parts[k].renumber_otn[*it] == -1){ */
+        /*   parts[k].renumber_otn[*it] = ind; */
+        /*   parts[k].renumber_nto[ind] = *it; */
+        /*   ind++; */
+        /* } */
+        /* } */
+      }
+
+      for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
+          iter!=parts[k].potentialneighbors.end();
+          iter++){
+
+        std::vector<idx_t> sort_elemstorecv;
+        sort_elemstorecv.assign(parts[k].elemstorecv[*iter].begin(), parts[k].elemstorecv[*iter].end());
+        for(idx_t ie=0; ie<sort_elemstorecv.size(); ie++){
+          for(idx_t je=0; je<sort_elemstorecv.size()-ie-1; je++){
+            /* if(sort_elemstorecv[je] > sort_elemstorecv[je+1]){ */
+            if(g_potentialneighbors[*iter].elems_ltg[sort_elemstorecv[je]] > g_potentialneighbors[*iter].elems_ltg[sort_elemstorecv[je+1]]){
+              idx_t dummy = sort_elemstorecv[je];
+              sort_elemstorecv[je] = sort_elemstorecv[je+1];
+              sort_elemstorecv[je+1] = dummy;
+            }
+          }
+          }
+
+          for(idx_t ie=0; ie < sort_elemstorecv.size(); ie++){
+            idx_t itglobloc = parts[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[sort_elemstorecv[ie]]];
+            parts[k].renumber_otn[itglobloc] = ind;
+            parts[k].renumber_nto[ind] = itglobloc;
+            ind++;
+          }
+
+          /* for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin(); */
+          /*     it!=parts[k].elemstorecv[*iter].end(); */
+          /*     it++){ */
+          /*   idx_t itglobloc = parts[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[*it]]; */
+          /*   parts[k].renumber_otn[itglobloc] = ind; */
+          /*   parts[k].renumber_nto[ind] = itglobloc; */
+          /*   ind++; */
+          /* } */
         }
       }
     }
-
-    for(std::set<idx_t>::iterator iter=parts[k].potentialneighbors.begin();
-        iter!=parts[k].potentialneighbors.end();
-        iter++){
-      for(std::set<idx_t>::iterator it=parts[k].elemstorecv[*iter].begin();
-          it!=parts[k].elemstorecv[*iter].end();
-          it++){
-        idx_t itglobloc = parts[k].elems_gtl[g_potentialneighbors[*iter].elems_ltg[*it]];
-        parts[k].renumber_otn[itglobloc] = ind;
-        parts[k].renumber_nto[ind] = itglobloc;
-        ind++;
-      }
-    }
-  }
-}
