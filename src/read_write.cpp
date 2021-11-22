@@ -172,7 +172,11 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
       boundary_conditions_types[boco-1] = bocoType;
 
       for(cgsize_t i=0; i<nBCNodes; i++){
+        bcnodes[i] --;
         for(int k=0; k<parts.size(); k++){
+          /* if(boundary_conditions_names[boco-1]=="Inflow nodes" and bcnodes[i]==11121){ */
+          /*   std::cout << parts[k].partitionid << " " << bcnodes[i] << " " << parts[k].nodes_gtl[bcnodes[i]] << std::endl; */
+          /* } */
           if(parts[k].nodes_gtl.count(bcnodes[i]) != 0){
             parts[k].boundary_conditions[boco-1].insert(bcnodes[i]);
           }
@@ -969,6 +973,9 @@ void read_nodes_cgns(std::vector<partition> &parts, std::string filename, MPI_Co
           parts[k].get_nodes(nloc[k],2) = z[j];
           parts[k].nodes_ltg.insert({nloc[k], i});
           parts[k].nodes_gtl.insert({i, nloc[k]});
+          /* if(i==3) { */
+          /*   std::cout << i << " " << parts[k].partitionid << " " << nloc[k] << std::endl; */
+          /* } */
           nloc[k] += 1;
         }
       }
@@ -1333,7 +1340,6 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
             }
 
 
-
           MPI_Bcast(elemstosend, snei, MPI_INT, me, comm);
           std::stringstream ssname;
           ssname << it->first;
@@ -1393,6 +1399,9 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           for(std::set<idx_t>::iterator it=parts[kk].boundary_conditions[bc].begin();
               it!=parts[kk].boundary_conditions[bc].end();it++){
             bcnodes[ibc] = parts[kk].nodes_gtl[*it] ;
+            /* if(boundary_conditions_names[bc]=="Inflow nodes"){ */
+            /*   std::cout << parts[kk].partitionid << " " << *it << " " << parts[kk].nodes_gtl[*it] << std::endl; */
+            /* } */
             ibc++;
           }
           
