@@ -973,9 +973,6 @@ void read_nodes_cgns(std::vector<partition> &parts, std::string filename, MPI_Co
           parts[k].get_nodes(nloc[k],2) = z[j];
           parts[k].nodes_ltg.insert({nloc[k], i});
           parts[k].nodes_gtl.insert({i, nloc[k]});
-          /* if(i==3) { */
-          /*   std::cout << i << " " << parts[k].partitionid << " " << nloc[k] << std::endl; */
-          /* } */
           nloc[k] += 1;
         }
       }
@@ -1398,7 +1395,7 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           cgsize_t ibc=0;
           for(std::set<idx_t>::iterator it=parts[kk].boundary_conditions[bc].begin();
               it!=parts[kk].boundary_conditions[bc].end();it++){
-            bcnodes[ibc] = parts[kk].nodes_gtl[*it] ;
+            bcnodes[ibc] = parts[kk].nodes_gtl[*it] + 1;
             /* if(boundary_conditions_names[bc]=="Inflow nodes"){ */
             /*   std::cout << parts[kk].partitionid << " " << *it << " " << parts[kk].nodes_gtl[*it] << std::endl; */
             /* } */
@@ -1408,6 +1405,7 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           MPI_Bcast(&bcnodes, parts[kk].boundary_conditions[bc].size(), MPI_INT, me, comm);
           int index_zone = cgzones[k][0];
           if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[kk].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
+
           if(cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex))) cg_error_exit();
 
           /* std::cout << "send " << index_zone << " " << boundary_conditions_names[bc] << std::endl; */
@@ -1504,6 +1502,7 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
           MPI_Bcast(bcnodes, bcsize, MPI_INT, ownerofpartition[k], comm);
 
           int index_zone = cgzones[k][0];
+
           if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),bcsize,bcnodes,&index_bc)) cg_error_exit();
           if(cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex))) cg_error_exit();
           /* std::cout << "recv " << index_zone << " " << boundary_conditions_names[bc] << std::endl; */
