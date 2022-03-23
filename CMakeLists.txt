@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.9)
 set (CMAKE_CXX_STANDARD 11)
-set (CMAKE_CXX_FLAGS "--std=c++11 -O3")
+set (CMAKE_CXX_FLAGS "--std=c++11 -O3 -fopenmp")
 
 project (parmetirs_ghost_v4 C CXX)
 

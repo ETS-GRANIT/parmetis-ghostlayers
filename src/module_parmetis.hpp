@@ -68,7 +68,7 @@ struct partition {
 
   int esize; // Element size (number of vertices of the elements)
 
-  std::vector<std::vector<real_t> > extents; // Spacial extents
+  std::vector<std::vector<double> > extents; // Spacial extents
   std::set<idx_t> potentialneighbors_extents; // Set of extents computed potential neighbors id
   std::set<idx_t> potentialneighbors; // Set of potential neighbors id fixed by looking for same nodes
 

@@ -15,7 +15,7 @@
 std::map<idx_t, potential_neighbors_boundary> g_potentialneighbors;
 
 void partition::compute_extents(){
-  extents.resize(3,std::vector<real_t>(2, 0.));
+  extents.resize(3,std::vector<double>(2, 0.));
 
   extents[0][0] = nodes[0*3+0];
   extents[0][1] = nodes[0*3+0];
@@ -1015,7 +1015,7 @@ void share_boundary(std::vector<partition> &parts, std::vector<idx_t> &ownerofpa
     maxelemstosend = std::max(maxelemstosend, (idx_t) parts[k].boundaryelems.size());
   }
 
-  real_t *nodestosend = new real_t[maxnodestosend*4*parts.size()];
+  double *nodestosend = new double[maxnodestosend*4*parts.size()];
   idx_t *elemstosend = new idx_t[maxelemstosend*(1+esize)*parts.size()];
 
   //Compute total number of messages/request
@@ -1063,7 +1063,7 @@ void share_boundary(std::vector<partition> &parts, std::vector<idx_t> &ownerofpa
     for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
       if(msgs_send[ownerofpartition[*it]].count(parts[k].partitionid)==0){
         if(ownerofpartition[*it]!=me){
-          MPI_Isend(&nodestosend[4*maxnodestosend*k], parts[k].boundarynodes.size()*4, REAL_T, ownerofpartition[*it], (*it)*ownerofpartition.size()+parts[k].partitionid, comm, &requestSendPtr[nreq]);
+          MPI_Isend(&nodestosend[4*maxnodestosend*k], parts[k].boundarynodes.size()*4, MPI_DOUBLE, ownerofpartition[*it], (*it)*ownerofpartition.size()+parts[k].partitionid, comm, &requestSendPtr[nreq]);
           nreq++;
         }
         else{
@@ -1093,7 +1093,7 @@ void share_boundary(std::vector<partition> &parts, std::vector<idx_t> &ownerofpa
     for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
       if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
         MPI_Probe(ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
-        MPI_Get_count(&stat,REAL_T,&nnodestorecv[nreq]);
+        MPI_Get_count(&stat,MPI_DOUBLE,&nnodestorecv[nreq]);
         nnodestorecv[nreq] /= 4;
         maxnodestorecv = std::max(maxnodestorecv,nnodestorecv[nreq]);
         msgs_recv[ownerofpartition[*it]].insert(*it);
@@ -1102,7 +1102,7 @@ void share_boundary(std::vector<partition> &parts, std::vector<idx_t> &ownerofpa
     }
   }
 
-  real_t *nodestorecv = new real_t[maxnodestorecv*4*ntotreq_recv];
+  double *nodestorecv = new double[maxnodestorecv*4*ntotreq_recv];
 
   //Clear msgsend msgs recv
   for(idx_t pr=0;pr<nprocs;pr++){
@@ -1115,7 +1115,7 @@ void share_boundary(std::vector<partition> &parts, std::vector<idx_t> &ownerofpa
   for(idx_t k=0; k<parts.size(); k++){
     for(it=parts[k].potentialneighbors.begin(); it!= parts[k].potentialneighbors.end(); it++){
       if(ownerofpartition[*it]!=me && msgs_recv[ownerofpartition[*it]].count(*it)==0){
-        MPI_Recv(&nodestorecv[nreq*maxnodestorecv*4], nnodestorecv[nreq]*4, REAL_T, ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
+        MPI_Recv(&nodestorecv[nreq*maxnodestorecv*4], nnodestorecv[nreq]*4, MPI_DOUBLE, ownerofpartition[*it], (*it)+ownerofpartition.size()*parts[k].partitionid, comm, &stat);
 
         //Add nodes
         potential_neighbors_boundary pnbound;
@@ -1248,8 +1248,8 @@ void compute_potential_neighbors_from_extents(idx_t ntotparts, std::vector<parti
   MPI_Comm_size(comm,&nprocs);
   MPI_Comm_rank(comm,&me);
 
-  /* std::vector<std::vector<std::vector<real_t> > > allextents(ntotparts,std::vector<std::vector<real_t> >(3, std::vector<real_t>(2, 0.))); */
-  real_t *allextents = new real_t[ntotparts*3*2];
+  /* std::vector<std::vector<std::vector<double> > > allextents(ntotparts,std::vector<std::vector<double> >(3, std::vector<double>(2, 0.))); */
+  double *allextents = new double[ntotparts*3*2];
   for(idx_t k=0;k<ntotparts*2*3;k++){
     allextents[k] = 0.;
   }
@@ -1266,9 +1266,9 @@ void compute_potential_neighbors_from_extents(idx_t ntotparts, std::vector<parti
   }
 
   //Share extents with everyone
-  MPI_Allreduce(MPI_IN_PLACE, allextents, ntotparts*3*2, REAL_T, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, allextents, ntotparts*3*2, MPI_DOUBLE, MPI_SUM, comm);
 
-  real_t eps=1e-10;
+  double eps=1e-10;
 
   bool interx, intery, interz;
   //Compute potential neighbors

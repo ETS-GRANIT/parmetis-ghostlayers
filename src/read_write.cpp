@@ -918,7 +918,6 @@ void read_nodes_cgns(std::vector<partition> &parts, std::string filename, MPI_Co
   if(cg_ncoords(index_file, base, zone, &nCoords) != CG_OK) cg_get_error();
   double *x, *y, *z;
 
-
   //Resize each subdomain nodes vector
   for(idx_t k=0; k<parts.size(); k++){
     parts[k].nodes.resize(3*parts[k].nodesindex.size(), 0.);
@@ -1270,6 +1269,7 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
       for(idx_t i=0; i<parts[kk].get_nnodes(); i++){
         coord[i] = parts[kk].get_nodes(i,0);
       }
+
       if(cgp_coord_write_data(index_file,index_base,cgzones[k][0],cgzones[k][1],&estart,&eend,coord)) cgp_error_exit();
 
       for(idx_t i=0; i<parts[kk].get_nnodes(); i++){
