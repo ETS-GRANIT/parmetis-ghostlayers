@@ -237,7 +237,7 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
   std::vector<std::string> zms(ownerofpartition.size());
   for(int k=0; k<ownerofpartition.size(); k++){
     std::stringstream zss;
-    zss << "River_" << k;
+    zss << "Zone_" << k;
     zms[k] = zss.str();
   }
 
@@ -255,7 +255,7 @@ void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, 
     isize[0][1]=parts[k].get_nelems();
     isize[0][2]=0;
     std::stringstream zss;
-    zss << "River_" << parts[k].partitionid;
+    zss << "Zone_" << parts[k].partitionid;
     if(cg_zone_write(index_file,index_base,zss.str().c_str(),*isize,CGNS_ENUMV(Unstructured),&index_zone) ) cg_error_exit();
     coord = new double[parts[k].get_nnodes()];
     for(idx_t i=0; i<parts[k].get_nnodes(); i++){
@@ -432,7 +432,7 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
   std::vector<std::string> zms(ownerofpartition.size());
   for(int k=0; k<ownerofpartition.size(); k++){
     std::stringstream zss;
-    zss << "River_" << k;
+    zss << "Zone_" << k;
     zms[k] = zss.str();
   }
 
@@ -455,7 +455,7 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
         isize[0][1]=parts[k].get_nelems();
         isize[0][2]=0;
         std::stringstream zss;
-        zss << "River_" << parts[k].partitionid;
+        zss << "Zone_" << parts[k].partitionid;
         if(cg_zone_write(index_file,index_base,zss.str().c_str(),*isize,CGNS_ENUMV(Unstructured),&index_zone) ) cg_error_exit();
         coord = new double[parts[k].get_nnodes()];
         for(idx_t i=0; i<parts[k].get_nnodes(); i++){
@@ -1038,7 +1038,7 @@ void write_pcgns_without_send_recv_info(std::vector<partition> &parts, idx_t esi
   std::vector<std::string> ems(ownerofpartition.size());
   for(int k=0; k<ownerofpartition.size(); k++){
     std::stringstream zss;
-    zss << "River_" << k;
+    zss << "Zone_" << k;
     zms[k] = zss.str();
   }
 
@@ -1198,7 +1198,7 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
   std::vector<std::string> ems(ownerofpartition.size());
   for(int k=0; k<ownerofpartition.size(); k++){
     std::stringstream zss;
-    zss << "River_" << k;
+    zss << "Zone_" << k;
     zms[k] = zss.str();
   }
 
