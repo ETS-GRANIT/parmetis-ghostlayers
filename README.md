@@ -18,7 +18,7 @@ mpirun -n NP main NSD MESH_FILE.cgns METHOD NLAYERS
 
 where, NP is the number of MPI processes (>=2), NSD is the number of sub-domains wanted, MESH_FILE.cgns is the mesh file, METHOD is either 0 to look for adjacent cells with an edge in common and 1 to look for adjacent cells with a vertex in common (finite volumes is fine with 0), and NLAYERS is the number of layer of ghost cells wanted.
 
-A typical output is (here for the command  mpirun -n 2 ./main 16 mille_48.cgns 0 2) :
+A typical output is (here using the command  "mpirun -n 2 ./main 16 mille_48.cgns 0 2" in the example folder) :
 
 Info : Np ParMETIS GLAS Reading CGNS_Single PCGNS_Single PCGNS_Hybrid      
 Times (s) : 2 0.388324 0.55677 0.517044 0 0 0.657898        
