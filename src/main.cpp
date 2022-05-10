@@ -175,9 +175,9 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   if(me==0){
-    std::cout << " Info : ParMETIS GLAS Reading CGNS_Single  CGNS_Multi_files PCGNS_Single Hybrid" << std::endl;
-    std::cout << std::setfill(' ') << std::setw(5) << "Temps : " << nprocs << " " << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs <<  " "  << duration8/nprocs << " " << duration9/nprocs << std::endl;
-    std::cout << "Memory usage : " << nprocs << " " << vmrss << " " << vmrss/nprocs << std::endl;
+    std::cout << " Info : Np ParMETIS GLAS Reading CGNS_Single  CGNS_Multi_files PCGNS_Single Hybrid" << std::endl;
+    std::cout << std::setfill(' ') << std::setw(5) << "Times (s) : " << nprocs << " " << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs <<  " "  << duration8/nprocs << " " << duration9/nprocs << std::endl;
+    std::cout << "Memory usage (MB) : " << nprocs << " " << vmrss << " " << vmrss/nprocs << std::endl;
   }
 
   MPI_Finalize();
