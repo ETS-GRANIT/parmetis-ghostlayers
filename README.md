@@ -10,4 +10,10 @@ CMakeLists.txt" is provided for compilation with CMake. The required libraries w
 - hdf5-mpi/1.10.6
 - cgns/4.1.2
 
-It has to be noted that the CGNS library needs to be compiled with parallel support (PCGNS). More information on this library can be found on https://github.com/CGNS/
+It should be noted that the CGNS library needs to be compiled with parallel support (PCGNS). More information on this library can be found on https://github.com/CGNS/
+
+Once the code has been compiled it can be launched using mpirun to partition a mesh using ParMETIS and add as many layers of ghost cells as demanded with
+
+mpirun -n NP main NSD MESH_FILE.cgns METHOD NLAYERS
+
+where, NP is the number of MPI processes (>=2), NSD is the number of sub-domains wanted, MESH_FILE.cgns is the mesh file, METHOD is either 0 to look for adjacent cells with an edge in common and 1 to look for adjacent cells with a vertex in common (finite volumes is fine with 0), and NLAYERS is the number of layer of ghost cells wanted.
