@@ -26,3 +26,5 @@ Memory usage (MB) : 2 320016 160008
         
 
 Where the times for different sections of the code are reported as well as the memory usage (first is total memory usage (RSS) and second is the average memory usage per process). In the last version of the code the CGNS_Single and PCGNS_Single output have been deactivated resulting in times of 0s. The only mesh file produced by the program is named "Mesh_Output_pcgns_ch.cgns" and contains the whole domain decomposition and the send/recv information as desribed in the paper.
+
+The mesh files can be viewed using Paraview https://www.paraview.org/. For a better view of the structure of the mesh files the CGNS View utility can also be used https://cgns.github.io/CGNS_docs_current/cgnstools/cgnsview/index.html.
