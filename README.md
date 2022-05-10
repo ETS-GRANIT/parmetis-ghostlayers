@@ -20,8 +20,8 @@ where, NP is the number of MPI processes (>=2), NSD is the number of sub-domains
 
 A typical output is (here for the command  mpirun -n 2 ./main 16 box_3.7M.cgns 16 0 2) :
 
-Info : Np ParMETIS GLAS Reading CGNS_Single PCGNS_Single PCGNS_Hybrid  
-Times (s) : 2 16.9 46.5009 0.594304 0 0 42.469
-Memory usage (KB) : 2 1466624 733312
+Info : Np ParMETIS GLAS Reading CGNS_Single PCGNS_Single PCGNS_Hybrid            
+Times (s) : 2 16.9 46.5009 0.594304 0 0 42.469              
+Memory usage (KB) : 2 1466624 733312         
 
 Where the times for different sections of the code are reported as well as the memory usage (first is total memory usage (RSS) and second is the average memory usage per process). In the last version of the code the CGNS_Single and PCGNS_Single output have been deactivated resulting in times of 0s. The only mesh file produced by the program is named "Mesh_Output_pcgns_ch.cgns" and contains the whole domain decomposition and the send/recv information as desribed in the paper.
