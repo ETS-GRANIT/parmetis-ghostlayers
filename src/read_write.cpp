@@ -174,9 +174,6 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
       for(cgsize_t i=0; i<nBCNodes; i++){
         bcnodes[i] --;
         for(int k=0; k<parts.size(); k++){
-          /* if(boundary_conditions_names[boco-1]=="Inflow nodes" and bcnodes[i]==11121){ */
-          /*   std::cout << parts[k].partitionid << " " << bcnodes[i] << " " << parts[k].nodes_gtl[bcnodes[i]] << std::endl; */
-          /* } */
           if(parts[k].nodes_gtl.count(bcnodes[i]) != 0){
             parts[k].boundary_conditions[boco-1].insert(bcnodes[i]);
           }
@@ -185,201 +182,6 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
     }
 
     delete [] bcnodes;
-  }
-}
-
-void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition){
-  idx_t nprocs, me;
-  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
-  MPI_Comm_rank(MPI_COMM_WORLD,&me);
-
-  MPI_Comm comm(MPI_COMM_WORLD);
-
-  int index_file, index_base, index_zone, n_bases, base, physDim, cellDim, nZones, zone, index_coord, index_section, index_bc;
-  int gnelems, nelems;
-  int nSections;
-  cgsize_t gnnodes;
-  int nCoords;
-  const char *zonename;
-  char name[40];
-  char secname[40];
-  cgsize_t sizes[2];
-  CGNS_ENUMV(ZoneType_t) zoneType;
-  CGNS_ENUMV(DataType_t) dataType;
-  CGNS_ENUMV(ElementType_t) elementType;
-  double *coord;
-  cgsize_t *elems, *elemstosend, *elemstorecv;
-  int Cx, Cy, Cz;
-
-  int icelldim;
-  int iphysdim;
-  if(dim == 2 and esize==3){
-    icelldim = 2;
-    iphysdim = 3;
-    elementType = CGNS_ENUMV(TRI_3);
-  }
-  else if(dim==2 and esize==4){
-    icelldim = 2;
-    iphysdim = 3;
-    elementType = CGNS_ENUMV(QUAD_4);
-  }
-  else if(dim==3 and esize==4){
-    icelldim = 3;
-    iphysdim = 3;
-    elementType = CGNS_ENUMV(TETRA_4);
-  }
-
-  std::map<idx_t, idx_t> partitionlocid;
-  for(idx_t i=0;i<parts.size();i++){
-    partitionlocid.insert(std::make_pair(parts[i].partitionid, i));
-  }
-
-  std::vector<std::string> zms(ownerofpartition.size());
-  for(int k=0; k<ownerofpartition.size(); k++){
-    std::stringstream zss;
-    zss << "Zone_" << k;
-    zms[k] = zss.str();
-  }
-
-  cgsize_t cgzones[ownerofpartition.size()][4];
-
-  index_base=1;
-  for(int k=0; k<parts.size(); k++){
-    std::stringstream fname;
-    fname << parts[k].partitionid << "_Mesh_Output.cgns";
-    if(cg_open(fname.str().c_str(),CG_MODE_WRITE,&index_file)) cg_error_exit();
-    if(cg_base_write(index_file,"Base",icelldim,iphysdim,&index_base)) cg_error_exit();
-
-    cgsize_t isize[1][3];
-    isize[0][0]=parts[k].get_nnodes();
-    isize[0][1]=parts[k].get_nelems();
-    isize[0][2]=0;
-    std::stringstream zss;
-    zss << "Zone_" << parts[k].partitionid;
-    if(cg_zone_write(index_file,index_base,zss.str().c_str(),*isize,CGNS_ENUMV(Unstructured),&index_zone) ) cg_error_exit();
-    coord = new double[parts[k].get_nnodes()];
-    for(idx_t i=0; i<parts[k].get_nnodes(); i++){
-      coord[i] = parts[k].get_nodes(i,0);
-    }
-    if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateX", coord, &Cx)) cg_error_exit();
-    for(idx_t i=0; i<parts[k].get_nnodes(); i++){
-      coord[i] = parts[k].get_nodes(i,1);
-    }
-    if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateY", coord, &Cy)) cg_error_exit();
-    for(idx_t i=0; i<parts[k].get_nnodes(); i++){
-      coord[i] = parts[k].get_nodes(i,2);
-    }
-    if(cg_coord_write(index_file,index_base,index_zone,CGNS_ENUMV(RealDouble), "CoordinateZ", coord, &Cz)) cg_error_exit();
-    delete [] coord;
-    int nstart=1, nend=parts[k].get_nelems();
-    elems = new cgsize_t[esize*parts[k].get_nelems()];
-    for(idx_t i=0; i<parts[k].get_nelems(); i++){
-      for(idx_t j=0; j<esize; j++){
-        int oldi = parts[k].renumber_nto[i];
-        elems[esize*i + j] = parts[k].nodes_gtl[parts[k].get_elems(oldi,j)]+1;
-      }
-    }
-    if(cg_section_write(index_file,index_base,index_zone,"Elements",elementType,nstart,nend,0,elems,&index_section)) cg_error_exit();
-    delete [] elems;
-    std::string name="ElemsToSend";
-    if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "end")) cg_error_exit();
-    if(cg_user_data_write(name.c_str())) cg_error_exit();
-    for(std::map<idx_t, std::set<idx_t> >::iterator it=parts[k].elemstosend.begin(); it!=parts[k].elemstosend.end(); it++){
-      if(it->second.size()>0){
-        elemstosend = new cgsize_t[it->second.size()];
-        cgsize_t i=0;
-        for(std::set<idx_t>::iterator iter=it->second.begin(); iter!=it->second.end(); iter++){
-          elemstosend[i] = parts[k].renumber_otn[*iter]+1;
-          i++;
-        }
-
-        /* //Buble sort as part of new renumbering correction */
-        for(idx_t ie=0; ie < it->second.size(); ie++){
-          for(idx_t je=0; je < it->second.size()-ie-1; je++){
-            /* if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) { */
-            /* if(parts[k].elems_ltg[elemstosend[je]-1] > parts[k].elems_ltg[elemstosend[je+1]-1]) { */
-            if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) {
-              idx_t dummy = elemstosend[je];
-              elemstosend[je] = elemstosend[je+1];
-              elemstosend[je+1] = dummy;
-            }
-          }
-        }
-
-        std::stringstream ssname;
-        ssname << it->first;
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "ElemsToSend", 0, "end")) cg_error_exit();
-        if(cg_user_data_write(ssname.str().c_str())) cg_error_exit();
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "ElemsToSend", 0, ssname.str().c_str(), 0, "end")) cg_error_exit();
-        if(cg_gridlocation_write(CGNS_ENUMV(CellCenter))) cg_error_exit();
-        if(cg_ptset_write(CGNS_ENUMV(PointList), it->second.size(), elemstosend)) cg_error_exit();
-        if(cg_ordinal_write(it->first));
-        delete [] elemstosend;
-      }
-    }
-    name="ElemsToRecv";
-    if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "end")) cg_error_exit();
-    if(cg_user_data_write(name.c_str())) cg_error_exit();
-    for(std::map<idx_t, std::set<idx_t> >::iterator it=parts[k].elemstorecv.begin(); it!=parts[k].elemstorecv.end(); it++){
-      if(it->second.size()>0){
-        std::stringstream ssname;
-        ssname << it->first;
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "ElemsToRecv", 0, "end")) cg_error_exit();
-        if(cg_user_data_write(ssname.str().c_str())) cg_error_exit();
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "ElemsToRecv", 0, ssname.str().c_str(), 0, "end")) cg_error_exit();
-        if(cg_gridlocation_write(CGNS_ENUMV(CellCenter))) cg_error_exit();
-        elemstorecv = new cgsize_t[2];
-        std::set<idx_t>::iterator iter=it->second.begin();
-        idx_t itglobloc = parts[k].elems_gtl[g_potentialneighbors[it->first].elems_ltg[*iter]];
-        elemstorecv[0] = parts[k].renumber_otn[itglobloc]+1;
-        elemstorecv[1] = it->second.size();
-        if(cg_ptset_write(CGNS_ENUMV(PointRange), 2, elemstorecv)) cg_error_exit();
-        if(cg_ordinal_write(it->first));
-        delete [] elemstorecv;
-      }
-    }
-
-    //Write boundary conditions
-    for(int bc=0; bc<parts[k].boundary_conditions.size(); bc++){
-      if(parts[k].boundary_conditions[bc].size()>0){
-        cgsize_t bcnodes[parts[k].boundary_conditions[bc].size()];
-        cgsize_t nbc=0;
-        for(std::set<idx_t>::iterator it=parts[k].boundary_conditions[bc].begin();
-            it!=parts[k].boundary_conditions[bc].end();it++){
-          bcnodes[nbc] = parts[k].nodes_gtl[*it] ;
-          nbc++;
-        }
-        if(cg_boco_write(index_file,index_base,index_zone,boundary_conditions_names[bc].c_str(),boundary_conditions_types[bc],CGNS_ENUMV(PointList),parts[k].boundary_conditions[bc].size(),bcnodes,&index_bc)) cg_error_exit();
-        cg_boco_gridlocation_write(index_file,index_base,index_zone,index_bc,CGNS_ENUMV(Vertex));
-      }
-    }
-
-    //Write user data
-    int nuserdata = ud_names.size();
-    for(int nud=1; nud<=nuserdata; nud++){
-      int narrays = ar_names[nud-1].size();
-      if(narrays>0){
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, "end")) cg_error_exit();
-        if(cg_user_data_write(ud_names[nud-1].c_str())) cg_error_exit();
-        cgsize_t dimensions=parts[k].arrays[nud-1][0].size();
-        CGNS_ENUMV(GridLocation_t) location;
-        if(dimensions==parts[k].get_nnodes()){
-          location = CGNS_ENUMV(Vertex);
-        }
-        if(dimensions==parts[k].get_nelems()){
-          location = CGNS_ENUMV(CellCenter);
-        }
-        if(cg_goto(index_file, index_base, zss.str().c_str(), 0, ud_names[nud-1].c_str(), 0, "end")) cg_error_exit();
-        if(cg_gridlocation_write(location)) cg_error_exit();
-        for(int na=1; na<=narrays; na++){
-          int rank=1;
-          if(cg_array_write(ar_names[nud-1][na-1].c_str(), CGNS_ENUMV(RealDouble), 1, &dimensions, parts[k].arrays[nud-1][na-1].data())) cg_error_exit();
-
-        }
-      }
-
-    }
-    if(cg_close(index_file)) cg_error_exit();
   }
 }
 
@@ -495,7 +297,7 @@ void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, st
             }
 
 
-            /* //Buble sort as part of new renumbering correction */
+            /* //BS as part of new renumbering correction */
             for(idx_t ie=0; ie < it->second.size(); ie++){
               for(idx_t je=0; je < it->second.size()-ie-1; je++){
                 /* if(parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je]-1]] > parts[k].elems_ltg[parts[k].renumber_nto[elemstosend[je+1]-1]]) { */
@@ -1325,7 +1127,7 @@ void write_pcgns_hybird_with_send_recv_info(std::vector<partition> &parts, idx_t
             i++;
           }
 
-          /* //Buble sort as part of new renumbering correction */
+          /* //BS as part of new renumbering correction */
           for(idx_t ie=0; ie < it->second.size(); ie++){
             for(idx_t je=0; je < it->second.size()-ie-1; je++){
               if(parts[kk].elems_ltg[parts[kk].renumber_nto[elemstosend[je]-1]] > parts[kk].elems_ltg[parts[kk].renumber_nto[elemstosend[je+1]-1]]) {

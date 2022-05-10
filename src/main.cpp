@@ -123,12 +123,6 @@ int main(int argc, char *argv[]) {
   get_memory_usage_kb(&vmrss, &vmsize);
 
   MPI_Barrier(comm);
-  auto tio7 = std::chrono::high_resolution_clock::now();
-  /* write_cgns_separate(parts, esize, dim, ownerofpartition); */
-  auto tio8 = std::chrono::high_resolution_clock::now();
-  MPI_Barrier(comm);
-
-  MPI_Barrier(comm);
   auto tio5 = std::chrono::high_resolution_clock::now();
   /* write_cgns_single(parts, esize, dim, ownerofpartition); */
   auto tio6 = std::chrono::high_resolution_clock::now();
@@ -152,7 +146,6 @@ int main(int argc, char *argv[]) {
   double duration4 = std::chrono::duration_cast<std::chrono::microseconds>(tio2-tio1).count()/1.0e6;
   double duration5 = std::chrono::duration_cast<std::chrono::microseconds>(tio4-tio3).count()/1.0e6;
   double duration6 = std::chrono::duration_cast<std::chrono::microseconds>(tio6-tio5).count()/1.0e6;
-  double duration7 = std::chrono::duration_cast<std::chrono::microseconds>(tio8-tio7).count()/1.0e6;
   double duration8 = std::chrono::duration_cast<std::chrono::microseconds>(tio10-tio9).count()/1.0e6;
   double duration04 = std::chrono::duration_cast<std::chrono::microseconds>(tio02-tio01).count()/1.0e6;
   double duration9 = std::chrono::duration_cast<std::chrono::microseconds>(tio12-tio11).count()/1.0e6;
@@ -165,7 +158,6 @@ int main(int argc, char *argv[]) {
   MPI_Allreduce(MPI_IN_PLACE, &duration4, 1, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, &duration5, 1, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, &duration6, 1, MPI_DOUBLE, MPI_SUM, comm);
-  MPI_Allreduce(MPI_IN_PLACE, &duration7, 1, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, &duration8, 1, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(MPI_IN_PLACE, &duration9, 1, MPI_DOUBLE, MPI_SUM, comm);
 
@@ -175,9 +167,9 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   if(me==0){
-    std::cout << " Info : ParMETIS GLAS Reading CGNS_Single  CGNS_Multi_files PCGNS_Single Hybrid" << std::endl;
-    std::cout << std::setfill(' ') << std::setw(5) << "Temps : " << nprocs << " " << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " " << duration7/nprocs <<  " "  << duration8/nprocs << " " << duration9/nprocs << std::endl;
-    std::cout << "Memory usage : " << nprocs << " " << vmrss << " " << vmrss/nprocs << std::endl;
+    std::cout << " Info : Np ParMETIS GLAS Reading CGNS_Single PCGNS_Single PCGNS_Hybrid" << std::endl;
+    std::cout << std::setfill(' ') << std::setw(5) << "Times (s) : " << nprocs << " " << duration1/nprocs << " " << (duration2+duration3)/nprocs << " " << (duration04+duration4+duration5)/nprocs << " " << duration6/nprocs << " "  << duration8/nprocs << " " << duration9/nprocs << std::endl;
+    std::cout << "Memory usage (MB) : " << nprocs << " " << vmrss << " " << vmrss/nprocs << std::endl;
   }
 
   MPI_Finalize();

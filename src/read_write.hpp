@@ -21,8 +21,6 @@ void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*
 
 void read_boundary_conditions(std::vector<partition> &parts, std::string filename);
 
-void write_cgns_separate(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition);
-
 void write_cgns_single(std::vector<partition> &parts, idx_t esize, idx_t dim, std::vector<idx_t> &ownerofpartition);
 
 void read_arrays(std::vector<partition> &parts, std::string filename, MPI_Comm comm);
