@@ -50,10 +50,29 @@ void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
   assert(zoneType == CGNS_ENUMV(Unstructured));
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
+
   gnnodes = sizes[0];
   gnelems = sizes[1];
 
+  //Read number of sections
+  if(cg_nsections(index_file, base, zone, &nSections) != CG_OK) cg_get_error();
+
+  int sec = nSections; //Default section ot read is the last
+  int nBdry;
+  cgsize_t TeBeg, TeEnd, *conn;
+  int parentFlag;
+  //Reads only section named "Elements" from mesh file (to get the elements's connectivity)
+  for(int isec=1; isec<=nSections; isec++){
+    if(cg_section_read(index_file, base, zone, isec, secname, &type,
+        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+    if(strcmp(secname,"Elements")==0) sec = isec;
+  }
+
+  if(cg_section_read(index_file, base, zone, sec, secname, &type,
+        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+
   //Create elmdist
+  gnelems = TeEnd-TeBeg+1;
   elmdist = new idx_t[nprocs+1];
   elmdist[0] = 0;
   idx_t j=gnelems;idx_t k;
@@ -64,24 +83,6 @@ void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*
   }
   nelems = elmdist[me+1]-elmdist[me];
 
-  if(cg_nsections(index_file, base, zone, &nSections) != CG_OK) cg_get_error();
-
-  int sec = nSections;
-
-  int nBdry;
-  cgsize_t TeBeg, TeEnd, *conn;
-  int parentFlag;
-
-  //Reads only section named "Elements" from mesh file (to get the elements's connectivity)
-  for(int isec=1; isec<=nSections; isec++){
-    if(cg_section_read(index_file, base, zone, isec, secname, &type,
-        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
-    if(strcmp(secname,"Elements")==0) sec = isec;
-  }
-
-
-  if(cg_section_read(index_file, base, zone, sec, secname, &type,
-        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
   switch (type)
   {
     case CGNS_ENUMV(TETRA_4):
@@ -101,7 +102,7 @@ void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*
   }
 
 
-  // Conectivity starts numbering at 1 !!!
+  // Connectivity starts numbering at 1 !!!
   cgsize_t eBeg=elmdist[me]+TeBeg;
   cgsize_t eEnd=elmdist[me+1]+TeBeg-1;
   if(cg_elements_partial_read(index_file, base, zone, sec, eBeg, eEnd, conn, NULL) != CG_OK) cg_get_error();
@@ -123,6 +124,9 @@ void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*
 }
 
 void read_boundary_conditions(std::vector<partition> &parts, std::string filename){
+  int me;
+  MPI_Comm_rank(MPI_COMM_WORLD,&me);
+
   int index_file, index_base, n_bases, base, physDim, cellDim, nZones, zone, nBocos;
   int normalIndex, nDataSet;
   int gnelems, nelems;
@@ -154,8 +158,73 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
   if(cg_zone_type(index_file, base, zone, &zoneType) != CG_OK) cg_get_error();
   assert(zoneType == CGNS_ENUMV(Unstructured));
   if(cg_zone_read(index_file, base, zone, zonename, sizes) != CG_OK) cg_get_error();
-  gnnodes = sizes[0];
-  gnelems = sizes[1];
+
+  //Added transform from cellcenter BC to vertexcentered BC
+  if(cg_nsections(index_file, base, zone, &nSections) != CG_OK) cg_get_error();
+  int sec = nSections; //Default section not to read
+  int nBdry, parentFlag;
+  int nlowsections_elems = 0;
+  std::vector<std::vector<cgsize_t> > lowsections_elemscon;
+  cgsize_t TeBeg, TeEnd, *conn;
+  //Do not Read section named "Elements" from mesh file
+  for(int isec=1; isec<=nSections; isec++){
+    if(cg_section_read(index_file, base, zone, isec, secname, &type,
+        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+    nlowsections_elems += TeEnd - TeBeg + 1;
+    if(strcmp(secname,"Elements")==0)sec = isec;
+  }
+  if(cg_section_read(index_file, base, zone, sec, secname, &type,
+        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+  nlowsections_elems -= TeEnd - TeBeg + 1;
+
+  /* std::cout << nlowsections_elems << " " << sec << " " << TeBeg << std::endl; */
+  if(nlowsections_elems>0){
+    lowsections_elemscon.resize(nlowsections_elems);
+    int esize,dim;
+    int k=0;
+    for(int isec=1; isec<=nSections; isec++){
+      if(isec!=sec){
+        if(cg_section_read(index_file, base, zone, isec, secname, &type,
+              &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+        nelems = TeEnd - TeBeg + 1;
+        switch (type)
+        {
+          case CGNS_ENUMV(NODE):
+            esize = 1;
+            dim = 1;
+            conn = new cgsize_t[nelems*esize]; break;
+          case CGNS_ENUMV(BAR_2):
+            esize = 2;
+            dim = 1;
+            conn = new cgsize_t[nelems*esize]; break;
+          case CGNS_ENUMV(TRI_3):
+            esize = 3;
+            dim = 2;
+            conn = new cgsize_t[nelems*esize]; break;
+          case CGNS_ENUMV(QUAD_4):
+            esize = 4;
+            dim = 2;
+            conn = new cgsize_t[nelems*esize]; break;
+          default:
+            exit(0);break;
+        }
+
+        if(cg_elements_read(index_file, base, zone, isec, conn, NULL) != CG_OK) cg_get_error();
+        for(int ii=0;ii<(TeEnd-TeBeg+1);ii++){
+          lowsections_elemscon[k].resize(esize);
+          for(int j=0; j<esize; j++){
+            lowsections_elemscon[k][j] = conn[ii*esize+j];
+            /* std::cout << lowsections_elemscon[k][j] << " " ; */
+          }
+          k++;
+          /* std::cout << std::endl; */
+        }
+      }
+    }
+  }
+  //END cell to vertex
+
+
 
   if(cg_nbocos(index_file, base, zone, &nBocos) != CG_OK) cg_get_error();
   boundary_conditions_names.resize(nBocos);
@@ -171,10 +240,40 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
     bcnodes = new cgsize_t[nBCNodes];
     CGNS_ENUMV(GridLocation_t) location;
     if(cg_boco_gridlocation_read(index_file, base, zone, boco, &location) != CG_OK) cg_get_error();
-    if(location!=CGNS_ENUMV(Vertex)){
-      std::cout << "Boundary condition not on vertex is ignored " << CGNS_ENUMV(Vertex) << " " << location << std::endl;
+
+    if(location==CGNS_ENUMV(CellCenter)){
+      if(me==0) std::cout << "Boundary condition on cells converted to vertex " << boconame << std::endl;
+      if(cg_boco_read(index_file, base, zone, boco, bcnodes,
+            NULL) != CG_OK) cg_get_error();
+
+      std::cout << boconame << std::endl;
+
+      boundary_conditions_names[boco-1] = boconame;
+      boundary_conditions_types[boco-1] = bocoType;
+ 
+      if(ptsetType!=CGNS_ENUMV(PointRange)){
+        std::cout << "42356 Not supported yet" << std::endl;
+        exit(0);
+      }
+
+      std::cout << boconame << " " << bcnodes[0] << " " << bcnodes[1] << std::endl;
+      for(cgsize_t i=bcnodes[0]; i<=bcnodes[1]; i++){
+        int ii = i-1;
+        if(ii < lowsections_elemscon.size()){
+          for(int j=0;j<lowsections_elemscon[ii].size();j++){
+            int node = lowsections_elemscon[ii][j] - 1;
+            for(int k=0; k<parts.size(); k++){
+              if(parts[k].nodes_gtl.count(node) != 0){
+                parts[k].boundary_conditions[boco-1].insert(node);
+                std::cout << "insert " << boconame << " " << ii << std::endl;
+              }
+            }
+          }
+        }
+      }
+
     }
-    else{
+    else if(location==CGNS_ENUMV(Vertex)){
       if(cg_boco_read(index_file, base, zone, boco, bcnodes,
             NULL) != CG_OK) cg_get_error();
 
