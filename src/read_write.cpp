@@ -65,10 +65,21 @@ void parallel_read_mesh_cgns(idx_t*& elmdist, idx_t*& eptr, idx_t*& eind, idx_t*
   nelems = elmdist[me+1]-elmdist[me];
 
   if(cg_nsections(index_file, base, zone, &nSections) != CG_OK) cg_get_error();
-  int sec = 1;
+
+  int sec = nSections;
+
   int nBdry;
   cgsize_t TeBeg, TeEnd, *conn;
   int parentFlag;
+
+  //Reads only section named "Elements" from mesh file (to get the elements's connectivity)
+  for(int isec=1; isec<=nSections; isec++){
+    if(cg_section_read(index_file, base, zone, isec, secname, &type,
+        &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
+    if(strcmp(secname,"Elements")==0) sec = isec;
+  }
+
+
   if(cg_section_read(index_file, base, zone, sec, secname, &type,
         &TeBeg, &TeEnd, &nBdry, &parentFlag) != CG_OK) cg_get_error();
   switch (type)
@@ -160,9 +171,8 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
     bcnodes = new cgsize_t[nBCNodes];
     CGNS_ENUMV(GridLocation_t) location;
     if(cg_boco_gridlocation_read(index_file, base, zone, boco, &location) != CG_OK) cg_get_error();
-    /* assert(location==CGNS_ENUMV(Vertex)); */
     if(location!=CGNS_ENUMV(Vertex)){
-      std::cout << "Boundary condition not on vertex is ignored" << std::endl;
+      std::cout << "Boundary condition not on vertex is ignored " << CGNS_ENUMV(Vertex) << " " << location << std::endl;
     }
     else{
       if(cg_boco_read(index_file, base, zone, boco, bcnodes,
