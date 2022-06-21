@@ -246,7 +246,7 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
       if(cg_boco_read(index_file, base, zone, boco, bcnodes,
             NULL) != CG_OK) cg_get_error();
 
-      std::cout << boconame << std::endl;
+      /* std::cout << boconame << std::endl; */
 
       boundary_conditions_names[boco-1] = boconame;
       boundary_conditions_types[boco-1] = bocoType;
@@ -256,7 +256,7 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
         exit(0);
       }
 
-      std::cout << boconame << " " << bcnodes[0] << " " << bcnodes[1] << std::endl;
+      /* std::cout << boconame << " " << bcnodes[0] << " " << bcnodes[1] << std::endl; */
       for(cgsize_t i=bcnodes[0]; i<=bcnodes[1]; i++){
         int ii = i-1;
         if(ii < lowsections_elemscon.size()){
@@ -265,7 +265,7 @@ void read_boundary_conditions(std::vector<partition> &parts, std::string filenam
             for(int k=0; k<parts.size(); k++){
               if(parts[k].nodes_gtl.count(node) != 0){
                 parts[k].boundary_conditions[boco-1].insert(node);
-                std::cout << "insert " << boconame << " " << ii << std::endl;
+                /* std::cout << "insert " << boconame << " " << ii << std::endl; */
               }
             }
           }
